@@ -1,0 +1,22 @@
+#version: "3.3"
+
+services:
+  jupyter:
+    # you can change this to whatever you want.
+    container_name: torchganime
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    volumes:
+      - "./:/TorchGANime"
+    ports:
+      - "8888:8888"
+    command: jupyter lab --allow-root --ip="*" --token=easy
+    #command: jupyter nbconvert --execute --to notebook /GANime/notebooks/model/vq-gan/min_gpt.ipynb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
