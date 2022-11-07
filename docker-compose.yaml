@@ -5,8 +5,11 @@ services:
     # you can change this to whatever you want.
     container_name: torchganime
     build:
+      context: .
       context: ./
       dockerfile: ./Dockerfile
+      shm_size: '8gb'
+    shm_size: '8gb'
     volumes:
       - "./:/TorchGANime"
     ports:
