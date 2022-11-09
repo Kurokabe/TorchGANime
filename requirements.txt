@@ -1,3 +1,6 @@
 jupyterlab
 opencv-python
 sk-video
+webdataset
+pytorch-lightning
+  

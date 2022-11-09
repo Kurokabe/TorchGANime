@@ -11,10 +11,16 @@ RUN apt-get -y update
 RUN apt-get -y upgrade
 RUN apt-get install -y ffmpeg
 
+
 # Setup environment
-WORKDIR /TorchGANime
 ENV PROJECT_DIR=/TorchGANime
-COPY requirements.txt /TorchGANime/requirements.txt
+WORKDIR $PROJECT_DIR
+COPY requirements.txt $PROJECT_DIR/requirements.txt
+
+ARG UID
+RUN useradd docker -o -l -u $UID -s /bin/bash -m
+USER docker
+
 RUN pip install -r requirements.txt
 COPY . .
 RUN pip install -e .
