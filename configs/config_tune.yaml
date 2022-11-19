@@ -2,15 +2,6 @@
 
 trainer:
   accelerator: "gpu"
-  devices: 
-    # - 0
-    # - 1
-    # - 2
-    # - 3
-    - 4
-    - 5
-    - 6
-    - 7
   accumulate_grad_batches: 5
   precision: 16
 model:
@@ -42,7 +33,7 @@ model:
     disc_loss: "hinge"
 
 data:
-  path: "./data/kny/images/01"
+  path: "/TorchGANime/data/kny/images/01"
   batch_size: 2
   num_workers: 1
   image_size: 

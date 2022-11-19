@@ -2,5 +2,8 @@ jupyterlab
 opencv-python
 sk-video
 webdataset
-pytorch-lightning
+pytorch-lightning==1.7
 einops
+ray[tune]
+ray[default]
+optuna 
