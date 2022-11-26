@@ -8,8 +8,8 @@ services:
       context: .
       context: ./
       dockerfile: ./Dockerfile
-      shm_size: '8gb'
-    shm_size: '8gb'
+      shm_size: '100gb'
+    shm_size: '100gb'
     volumes:
       - "./:/TorchGANime"
     ports:
