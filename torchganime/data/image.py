@@ -14,7 +14,7 @@ from torchvision.datasets import ImageFolder
 class ImageDataset(Dataset):
     def __init__(self, root, transform):
         self.root = root
-        self.image_paths = sorted(glob(os.path.join(root, "*.png")))
+        self.image_paths = sorted(glob(os.path.join(root, "**.png")))
         self.transform = transform
 
     def __getitem__(self, index):
