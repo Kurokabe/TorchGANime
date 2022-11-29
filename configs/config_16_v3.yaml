@@ -14,6 +14,7 @@ trainer:
   precision: 16
   gradient_clip_val: 1.0
   max_epochs: -1
+  strategy: ddp
 model:
   learning_rate: 4.5e-5
   autoencoder_config:
@@ -49,7 +50,7 @@ model:
 
 data:
   path: "/TorchGANime/data/full"
-  batch_size: 5
+  batch_size: 4
   num_workers: 1
   image_size: 
     - 128 
