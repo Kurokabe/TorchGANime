@@ -9,12 +9,15 @@ from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
+import random
 
 
 class ImageDataset(Dataset):
     def __init__(self, root, transform):
         self.root = root
         self.image_paths = sorted(glob(os.path.join(root, "**/*.png")))
+        self.image_paths = random.sample(self.image_paths, len(self.image_paths))
+        # self.image_paths = sorted(glob(os.path.join(root, "**/*.png")))
         self.transform = transform
 
     def __getitem__(self, index):
