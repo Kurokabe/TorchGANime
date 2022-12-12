@@ -1,9 +1,10 @@
 """Stripped version of https://github.com/richzhang/PerceptualSimilarity/tree/master/models"""
 
+from collections import namedtuple
+
 import torch
 import torch.nn as nn
 from torchvision import models
-from collections import namedtuple
 
 from ....util import get_ckpt_path
 
@@ -137,7 +138,7 @@ class vgg16(torch.nn.Module):
         return out
 
 
-def normalize_tensor(x, eps=1e-10):
+def normalize_tensor(x, eps=6.1e-5):
     norm_factor = torch.sqrt(torch.sum(x**2, dim=1, keepdim=True))
     return x / (norm_factor + eps)
 

@@ -1,4 +1,6 @@
 import functools
+from functools import partial
+
 import torch
 import torch.nn as nn
 
@@ -113,7 +115,7 @@ class NLayerDiscriminator(nn.Module):
         """
         super(NLayerDiscriminator, self).__init__()
         if not use_actnorm:
-            norm_layer = nn.BatchNorm2d
+            norm_layer = partial(nn.BatchNorm2d, eps=6.1e-5)
         else:
             norm_layer = ActNorm
         if (

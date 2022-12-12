@@ -12,7 +12,7 @@ def nonlinearity(x):
 
 def Normalize(in_channels: int):
     return torch.nn.GroupNorm(
-        num_groups=32, num_channels=in_channels, eps=1e-6, affine=True
+        num_groups=32, num_channels=in_channels, eps=6.1e-5, affine=True
     )
 
 
