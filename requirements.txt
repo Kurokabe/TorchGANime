@@ -7,3 +7,9 @@ einops
 ray[tune]
 ray[default]
 optuna 
+scenedetect[opencv]
+ipywidgets
+torchvision
+ffmpeg-python
+loguru
+pytorchvideo
