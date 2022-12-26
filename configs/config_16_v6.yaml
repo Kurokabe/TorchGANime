@@ -11,11 +11,11 @@ trainer:
   - 7
   accumulate_grad_batches: 16
   accelerator: gpu
-  precision: 32
+  precision: 16
   gradient_clip_val: 1.0
   strategy: ddp
 model:
-  learning_rate: 4.5e-5
+  learning_rate: 1e-4
   autoencoder_config:
     embed_dim: 256
     n_embed: 50257

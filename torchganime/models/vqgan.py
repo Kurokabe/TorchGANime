@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 import torchvision
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 from .modules.diffusion.model import Decoder, Encoder
 from .modules.losses.vqperceptual import VQLPIPSWithDiscriminator
 from .modules.vqvae.quantize import VectorQuantizer
@@ -283,22 +284,26 @@ class VQGAN(pl.LightningModule):
             + list(self.post_quant_conv.parameters()),
             lr=lr,
             betas=(0.5, 0.9),
+            eps=1e-6,
         )
         opt_disc = torch.optim.Adam(
-            self.loss.discriminator.parameters(), lr=lr, betas=(0.5, 0.9)
+            self.loss.discriminator.parameters(),
+            lr=lr,
+            betas=(0.5, 0.9),
+            eps=1e-6,
         )
 
-        scheduler = ReduceLROnPlateau(
-            opt_ae,
-            "min",
-            factor=0.5,
-            patience=2,
-        )
+        # scheduler = ReduceLROnPlateau(
+        #     opt_ae,
+        #     "min",
+        #     factor=0.5,
+        #     patience=2,
+        # )
 
         return [opt_ae, opt_disc], [
-            {
-                "optimizer": opt_ae,
-                "scheduler": scheduler,
-                "monitor": "val/rec_loss_epoch",
-            }
+            # {
+            #     "optimizer": opt_ae,
+            #     "scheduler": scheduler,
+            #     "monitor": "val/rec_loss_epoch",
+            # }
         ]
