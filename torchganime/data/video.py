@@ -95,7 +95,8 @@ class SceneDataset(Dataset):
         self.transform = transform
         self.min_max_len = min_max_len
 
-        self.detector = self.load_detector(detector, **kwargs)
+        self.detector_type = detector
+        self.detector_kwargs = kwargs
 
         # This will be used to store inside the user home folder files containing the scene spliting
         self.scene_list_dir = self.get_scene_list_dir(
@@ -107,7 +108,6 @@ class SceneDataset(Dataset):
         ] = self.retrieve_video_to_scene_list(self.scene_list_dir)
 
         self.scenes = self.retrieve_scenes(self.video_paths)
-        self.update_mapping()
 
     def load_detector(
         self, detector: Literal["content", "threshold", "adaptive"], **kwargs
@@ -195,6 +195,8 @@ class SceneDataset(Dataset):
             self.save_scenes(scenes, save_path)
             self.mapping_video_path_to_scene_file[video_path] = save_path
 
+            self.update_mapping()
+
         cut_scenes = self.cut_scenes_if_necessary(scenes)
         return cut_scenes
 
@@ -235,10 +237,12 @@ class SceneDataset(Dataset):
         Returns:
             List[Scene]: List of scenes holding the start and end frame of each scene.
         """
-
+        logger.info(f"Detecting scenes in {video_path}...")
         video = open_video(video_path)
         scene_manager = SceneManager()
-        scene_manager.add_detector(self.detector)
+        scene_manager.add_detector(
+            self.load_detector(self.detector_type, **self.detector_kwargs)
+        )
         # Detect all scenes in video from current position to end.
         scene_manager.detect_scenes(video, show_progress=self.show_progress)
         # `get_scene_list` returns a list of start/end timecode pairs
@@ -358,7 +362,7 @@ class SceneDataset(Dataset):
 
         video_paths = list(map(os.path.abspath, video_paths))
         logger.info(f"Found {len(video_paths)} videos")
-        return video_paths
+        return sorted(video_paths)
 
     def check_if_video(self, path: str) -> bool:
         """Check the metadata of a file to see if it is a video.
