@@ -3,7 +3,7 @@ import os
 import ffmpeg
 from typing import List, Union
 import pytorch_lightning as pl
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 from decord import VideoReader, cpu
 from glob import glob
 from loguru import logger
@@ -13,6 +13,7 @@ import dataclasses
 from dataclasses import dataclass
 import decord
 import torch
+
 
 decord.bridge.set_bridge("torch")
 
@@ -394,31 +395,7 @@ class SceneDataset(Dataset):
         scene = self.scenes[idx]
         vr = VideoReader(scene.video_path)
         frames = vr.get_batch(range(scene.start, scene.end))
-        frames = frames.to(dtype=torch.float) / 255
+        # frames = frames.to(dtype=torch.float) / 255
         if self.transform:
             frames = self.transform(frames)
         return frames
-
-
-# class VideoData(pl.LightningDataModule):
-#     def __init__(
-#         self,
-#         train_paths: Union[List[str], str],
-#         val_paths: Union[List[str], str],
-#         image_size: Union[int, List[int]] = 256,
-#         batch_size: int = 8,
-#         num_workers: int = 16,
-#     ):
-#         self.train_paths = self._validate_path(train_paths)
-#         self.val_paths = self._validate_path(val_paths)
-#         self.image_size = image_size
-#         self.batch_size = batch_size
-#         self.num_workers = num_workers
-
-#     def _validate_path(self, path: Union[List[str], str]):
-#         if path.isinstance(str):
-#             path = [path]
-#         if not os.path.exists(path):
-#             raise ValueError(f"The provided path {path} does not exist")
-
-#         return path
