@@ -1,4 +1,4 @@
-from typing import Optional, Callable, Dict, Literal
+from typing import Optional, Callable, Dict, Literal, Tuple
 import os
 import ffmpeg
 from typing import List, Union
@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, Dataset
 from decord import VideoReader, cpu
 from glob import glob
 from loguru import logger
-from scenedetect import SceneManager, open_video
+from scenedetect import SceneManager, open_video, SceneDetector
 import json
 import dataclasses
 from dataclasses import dataclass
@@ -49,13 +49,51 @@ class SceneDataset(Dataset):
         transform: Optional[Callable] = None,
         recursive: bool = False,
         show_progress: bool = False,
+        min_max_len: Optional[Tuple[int]] = None,
         detector: Literal["content", "threshold", "adaptive"] = "content",
-        # TODO: add min/max scene length
         **kwargs,
     ):
+        """Dataset that will load scenes on the fly from a list of videos. The scenes are detected using the PySceneDetect library https://scenedetect.com/projects/Manual/en/latest/index.html.
+
+        Args:
+            paths (List[str]): List of paths to the videos. The paths can point to a video file or a folder containing video files.
+            transform (Optional[Callable], optional): Transformations applied after loading the scenes. Defaults to None.
+            recursive (bool, optional): If elements in paths are folders and recursive is True, will look for videos in subfolders. Defaults to False.
+            show_progress (bool, optional): Whether to show progress or not when detecting scenes with PySceneDetect. Defaults to False.
+            min_max_len (Optional[Tuple[int]], optional): Minimum and maximum length of the scenes. If specified, must be a tuple of two values, the minimal scene length and maximal scene length. Scenes longer that max scene length will be splitted into a length that is between these two values.  Defaults to None.
+            detector (Literal[&quot;content&quot;, &quot;threshold&quot;, &quot;adaptive&quot;], optional): Method used to detect the scenes. Refer to the following link for more details about detectors: https://scenedetect.com/projects/Manual/en/latest/cli/detectors.html. Defaults to "content".
+            **kwargs: Keyword arguments passed to the detector. Depends on which detector is used. Refer to the following link for more details about detectors: https://scenedetect.com/projects/Manual/en/latest/cli/detectors.html.
+            The available arguments when detector is set to "content" are:
+                - threshold=27.0
+                - min_scene_len=15
+                - weights=Components(delta_hue=1.0, delta_sat=1.0, delta_lum=1.0, delta_edges=0.0)
+                - luma_only=False
+                - kernel_size=None
+            The available arguments when detector is set to "threshold" are:
+                - adaptive_threshold=3.0
+                - min_scene_len=15
+                - window_width=2
+                - min_content_val=15.0
+                - weights=Components(delta_hue=1.0, delta_sat=1.0, delta_lum=1.0, delta_edges=0.0)
+                - luma_only=False
+                - kernel_size=None
+                - video_manager=None
+                - min_delta_hsv=None
+            The available arguments when detector is set to "adaptive" are:
+                - adaptive_threshold=3.0
+                - min_scene_len=15
+                - window_width=2
+                - min_content_val=15.0
+                - weights=Components(delta_hue=1.0, delta_sat=1.0, delta_lum=1.0, delta_edges=0.0)
+                - luma_only=False
+                - kernel_size=None
+                - video_manager=None
+                - min_delta_hsv=None
+        """
         self.show_progress = show_progress
         self.video_paths = self._get_video_paths(paths, recursive)
         self.transform = transform
+        self.min_max_len = min_max_len
 
         self.detector = self.load_detector(detector, **kwargs)
 
@@ -73,7 +111,15 @@ class SceneDataset(Dataset):
 
     def load_detector(
         self, detector: Literal["content", "threshold", "adaptive"], **kwargs
-    ):
+    ) -> SceneDetector:
+        """Load the detector used to detect the scenes in the videos.
+
+        Args:
+            detector (Literal[&quot;content&quot;, &quot;threshold&quot;, &quot;adaptive&quot;]): Method used to detect the scenes. Refer to the following link for more details about detectors: https://scenedetect.com/projects/Manual/en/latest/cli/detectors.html.
+
+        Returns:
+            SceneDetector: SceneDetector object to cut scenes.
+        """
         if detector == "content":
             from scenedetect import ContentDetector
 
@@ -87,11 +133,19 @@ class SceneDataset(Dataset):
 
             return AdaptiveDetector(**kwargs)
 
-    def get_scene_list_dir(self, detector_params: Dict):
+    def get_scene_list_dir(self, detector_params: Dict) -> str:
+        """Get the directory where the scene list files will be stored.
+        It will be stored inside the user home folder in a folder called ".scene_dataset" and a subfolder with the name of the detector and its parameters.
+
+        Args:
+            detector_params (Dict): List of parameters given to the detector.
+
+        Returns:
+            str: Path where the scene list files will be stored.
+        """
         scene_list_dir = os.path.join(
             os.path.expanduser("~"),
             ".scene_dataset",
-            "scene_list",
             "_".join(str(val) for val in detector_params.values()),
         )
         os.makedirs(scene_list_dir, exist_ok=True)
@@ -101,6 +155,15 @@ class SceneDataset(Dataset):
         self,
         video_paths: List[str],
     ) -> List[Scene]:
+        """Get the scenes from the videos. If the scenes have already been computed, they will be loaded from the scene list files. Otherwise, they will be computed and saved in the scene list files.
+        If min_max_len has been set, scenes will be cut to fit the min_max_len.
+
+        Args:
+            video_paths (List[str]): List of paths to the videos.
+
+        Returns:
+            List[Scene]: List of scenes holding the start and end frame of each scene.
+        """
         scenes = []
         for video_path in video_paths:
             scenes.extend(self.retrieve_scenes_from_video(video_path))
@@ -110,31 +173,44 @@ class SceneDataset(Dataset):
         self,
         video_path: str,
     ) -> List[Scene]:
+        """Get the scenes from a video. If the scenes have already been computed, they will be loaded from the scene list files. Otherwise, they will be computed and saved in the scene list files.
+        If min_max_len has been set, scenes will be cut to fit the min_max_len.
+
+        Args:
+            video_path (str): Path to the video.
+
+        Returns:
+            List[Scene]: List of scenes holding the start and end frame of each scene.
+        """
+
         if video_path in self.mapping_video_path_to_scene_file:
             scenes = self.load_precomputed_scenes(
                 self.mapping_video_path_to_scene_file[video_path]
             )
         else:
-            scenes = [
-                Scene(
-                    start=scene[0].get_frames(),
-                    end=scene[1].get_frames(),
-                    video_path=video_path,
-                )
-                for scene in self.detect_scenes(video_path)
-            ]
+            scenes = self.detect_scenes(video_path)
             save_path = os.path.join(
                 self.scene_list_dir, f"{video_path.replace('/', '_')}.json"
             )
             self.save_scenes(scenes, save_path)
             self.mapping_video_path_to_scene_file[video_path] = save_path
-        return scenes
+
+        cut_scenes = self.cut_scenes_if_necessary(scenes)
+        return cut_scenes
 
     def save_scenes(self, scenes: List[Scene], save_path: str):
+        """Save the scenes info in a json file.
+
+        Args:
+            scenes (List[Scene]): List of scenes to save.
+            save_path (str): Path where the scenes will be saved.
+        """
         with open(save_path, "w") as f:
             json.dump(scenes, f, cls=EnhancedJSONEncoder)
 
     def update_mapping(self):
+        """Update the mapping between the video paths and the scene list files."""
+
         with open(
             os.path.join(self.scene_list_dir, SceneDataset.scene_list_file), "w"
         ) as f:
@@ -150,7 +226,15 @@ class SceneDataset(Dataset):
     def detect_scenes(
         self,
         video_path: str,
-    ):
+    ) -> List[Scene]:
+        """Use SceneDetect to detect the scenes in the video and generate a list of scenes with the start and end frame of each scene.
+
+        Args:
+            video_path (str): Path of the video to split.
+
+        Returns:
+            List[Scene]: List of scenes holding the start and end frame of each scene.
+        """
 
         video = open_video(video_path)
         scene_manager = SceneManager()
@@ -159,9 +243,87 @@ class SceneDataset(Dataset):
         scene_manager.detect_scenes(video, show_progress=self.show_progress)
         # `get_scene_list` returns a list of start/end timecode pairs
         # for each scene that was found.
-        return scene_manager.get_scene_list()
+        scenes = scene_manager.get_scene_list()
+        scenes = [
+            Scene(
+                start=scene[0].get_frames(),
+                end=scene[1].get_frames(),
+                video_path=video_path,
+            )
+            for scene in scenes
+        ]
+        return scenes
+
+    def cut_scenes_if_necessary(self, scenes: List[Scene]) -> List[Scene]:
+        """Cut the scenes to fit the min_max_len if it has been set.
+
+        Args:
+            scenes (List[Scene]): List of scenes to cut.
+
+        Returns:
+            List[Scene]: Scenes that have been cut to fit the min_max_len.
+        """
+        if self.min_max_len is not None:
+            scenes = self.cut_scenes(scenes)
+        return scenes
+
+    def cut_scenes(self, scenes: List[Scene]) -> List[Scene]:
+        cut_scenes = []
+        for scene in scenes:
+            cut_scenes.extend(
+                list(
+                    self.cut_scene(
+                        scene, self.get_value_to_split(scene, *self.min_max_len)
+                    )
+                )
+            )
+        return cut_scenes
+
+    def get_value_to_split(
+        self, scene: Scene, min_ideal_length: int, max_ideal_length: int
+    ) -> int:
+        """Get the best size to split the scene to fit the min_max_len.
+        For instance if scene length is 50 frames, min ideal length is 15 and max ideal length is 25, the best size to split the scene is 25.
+
+        Args:
+            scene (Scene): The scene to split.
+            min_ideal_length (int): The minimal length of the resulting scenes.
+            max_ideal_length (int): The maximal length of the resulting scenes.
+
+        Returns:
+            int: The ideal length to split the scene.
+        """
+        n_elements = len(scene)
+
+        lowest_remainder = max_ideal_length
+        lowest_id = max_ideal_length
+        for i in range(min_ideal_length, max_ideal_length):
+            remainder = n_elements % i
+            if remainder <= lowest_remainder:
+                lowest_id = i
+                lowest_remainder = remainder
+        return lowest_id
+
+    def cut_scene(self, scene: Scene, length: int) -> Scene:
+
+        """Cut the scene into the specified length. If the scene cannot be cut perfectly into the specified length, the last scene will be shorter or longer than the others.
+
+        Yields:
+            Scene: Subscene of the scene after cutting.
+        """
+        n_splits = len(scene) // length
+        if n_splits == 0:
+            yield scene
+        else:
+            for i in range(n_splits):
+                start = i * length
+                end = (i + 1) * length
+                if len(scene) - end < length:
+                    end = len(scene)
+                yield Scene(start, end, scene.video_path)
 
     def retrieve_video_to_scene_list(self, root: str) -> Dict[str, str]:
+        """Retrieve the mapping between the video paths and the scene list files."""
         file_path = os.path.join(root, SceneDataset.scene_list_file)
         if os.path.exists(file_path):
             with open(file_path, "r") as f:
@@ -171,6 +333,15 @@ class SceneDataset(Dataset):
         return video_to_scene_list
 
     def _get_video_paths(self, paths: List[str], recursive: bool) -> List[str]:
+
+        """Find all the video files in the paths. If a path is a folder, it will search recursively inside the folder if recursive is set to True.
+
+        Args:
+            paths (List[str]): List of paths to search for videos.
+            recursive (bool): If True, it will search recursively inside the folders.
+        Returns:
+            List[str]: List of all available video paths.
+        """
         video_paths = []
         for path in paths:
             if os.path.isfile(path):
@@ -190,10 +361,26 @@ class SceneDataset(Dataset):
         return video_paths
 
     def check_if_video(self, path: str) -> bool:
+        """Check the metadata of a file to see if it is a video.
+
+        Args:
+            path (str): Path of the file to check.
+
+        Returns:
+            bool: True if it is a video, False otherwise.
+        """
         metadata = self.get_metadata(path)
         return metadata["codec_type"] == "video"
 
     def get_metadata(self, path: str) -> dict:
+        """Use ffmpeg to retrieve the metadata of a file.
+
+        Args:
+            path (str): Path of the file to check.
+
+        Returns:
+            dict: Dictionary holding the metadata.
+        """
         return ffmpeg.probe(path, select_streams="v")["streams"][0]
 
     def __len__(self):
