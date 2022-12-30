@@ -63,7 +63,6 @@ class ImageData(pl.LightningDataModule):
                 [
                     transforms.Resize(resized_shape),
                     transforms.RandomCrop(self.image_size),
-                    # transforms.RandomResizedCrop((256, 512)),
                     transforms.RandomHorizontalFlip(),
                     transforms.ToTensor(),
                     self.normalize,

@@ -28,8 +28,12 @@ def pad_tensor(vec, pad, dim):
 
 class PadCollate:
     """
-    a variant of callate_fn that pads according to the longest sequence in
-    a batch of sequences
+    a variant of collate_fn that pads according to the longest sequence in
+    a batch of sequences. Returns a dictionary with keys:
+        target - the padded tensor
+        frame_number - the number of frames originally in each sequence (before padding)
+        first_frame - the first frame of each sequence
+        end_frame - the last frame of each sequence (before padding)
     """
 
     def __init__(self, dim=0):
@@ -42,19 +46,35 @@ class PadCollate:
     def pad_collate(self, batch):
         """
         args:
-            batch - list of (tensor, label)
+            batch - list of tensor
 
-        reutrn:
-            xs - a tensor of all examples in 'batch' after padding
-            ys - a LongTensor of all labels in batch
+        return dictionary with keys:
+            target - the padded tensor
+            frame_number - the number of frames originally in each sequence (before padding)
+            first_frame - the first frame of each sequence
+            end_frame - the last frame of each sequence (before padding)
         """
         # find longest sequence
-        max_len = max([b.shape[1] for b in batch])
+        frame_number = [b.shape[1] for b in batch]
+        max_len = max(frame_number)
+        first_frames = [b[:, 0, :, :] for b in batch]
+        end_frames = [b[:, -1, :, :] for b in batch]
+
         # pad according to max_len
-        batch = map(lambda x: (pad_tensor(x, pad=max_len, dim=1)), batch)
+        batch = [pad_tensor(b, pad=max_len, dim=1) for b in batch]
+
         # stack all
-        xs = torch.stack(list(map(lambda x: x[0], batch)), dim=0)
-        return xs
+        xs = torch.stack(batch, dim=0)
+        frame_number = torch.tensor(frame_number)
+        first_frames = torch.stack(first_frames, dim=0)
+        end_frames = torch.stack(end_frames, dim=0)
+
+        return {
+            "target": xs,
+            "frame_number": frame_number,
+            "first_frame": first_frames,
+            "end_frame": end_frames,
+        }
 
     def __call__(self, batch):
         return self.pad_collate(batch)
