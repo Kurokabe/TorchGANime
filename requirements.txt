@@ -12,4 +12,4 @@ ipywidgets
 torchvision
 ffmpeg-python
 loguru
-pytorchvideo
+transformers
