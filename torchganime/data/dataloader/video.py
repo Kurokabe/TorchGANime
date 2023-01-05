@@ -70,11 +70,10 @@ class PadCollate:
         end_frames = torch.stack(end_frames, dim=0)
 
         return {
-            "target": xs,
             "frame_number": frame_number,
             "first_frame": first_frames,
             "end_frame": end_frames,
-        }
+        }, xs
 
     def __call__(self, batch):
         return self.pad_collate(batch)
@@ -89,6 +88,8 @@ class VideoData(pl.LightningDataModule):
         batch_size: int = 8,
         num_workers: int = 16,
     ):
+        super().__init__()
+        self.prepare_data_per_node = False
         self.train_paths = self._validate_path(train_paths)
         self.val_paths = self._validate_path(val_paths)
         self.image_size = image_size
@@ -148,9 +149,9 @@ class VideoData(pl.LightningDataModule):
     def _validate_path(self, path: Union[List[str], str]):
         if isinstance(path, str):
             path = [path]
-        for p in path:
-            if not os.path.exists(p):
-                raise ValueError(f"The provided path {p} does not exist")
+        # for p in path:
+        #     if not os.path.exists(p):
+        #         raise ValueError(f"The provided path {p} does not exist")
         return path
 
     def train_dataloader(self) -> DataLoader:

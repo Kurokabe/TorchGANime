@@ -1,6 +1,5 @@
 from pytorch_lightning.cli import LightningCLI
 
-# simple demo classes for your convenience
 from torchganime.models.vqgan import VQGAN
 from torchganime.data.image import ImageData
 from pytorch_lightning.callbacks import ModelCheckpoint

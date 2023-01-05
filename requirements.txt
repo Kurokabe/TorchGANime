@@ -13,3 +13,5 @@ torchvision
 ffmpeg-python
 loguru
 transformers
+decord
+moviepy

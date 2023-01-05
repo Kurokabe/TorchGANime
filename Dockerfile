@@ -1,4 +1,4 @@
-FROM pytorchlightning/pytorch_lightning:base-cuda-py3.9-torch1.12-cuda11.6.1
+FROM pytorchlightning/pytorch_lightning:base-cuda-py3.9-torch1.13-cuda11.7.0
 # Because of https://developer.nvidia.com/blog/updating-the-cuda-linux-gpg-repository-key/ and https://github.com/NVIDIA/nvidia-docker/issues/1631#issuecomment-1112828208
 # RUN rm /etc/apt/sources.list.d/cuda.list
 # RUN rm /etc/apt/sources.list.d/nvidia-ml.list

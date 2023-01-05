@@ -13,6 +13,7 @@ import dataclasses
 from dataclasses import dataclass
 import decord
 import torch
+import random
 
 
 decord.bridge.set_bridge("torch")
@@ -109,6 +110,9 @@ class SceneDataset(Dataset):
         ] = self.retrieve_video_to_scene_list(self.scene_list_dir)
 
         self.scenes = self.retrieve_scenes(self.video_paths)
+        # TODO : add a shuffle parameter
+        if True:
+            random.shuffle(self.scenes)
 
     def load_detector(
         self, detector: Literal["content", "threshold", "adaptive"], **kwargs
@@ -349,17 +353,19 @@ class SceneDataset(Dataset):
         """
         video_paths = []
         for path in paths:
-            if os.path.isfile(path):
-                # File
-                if self.check_if_video(path):
-                    video_paths.append(path)
-            else:
-                logger.info(f"Finding video files inside {path} ...")
-                # Folder
-                for file_path in glob(os.path.join(path, "**"), recursive=recursive):
-                    if os.path.isfile(file_path):
-                        if self.check_if_video(file_path):
-                            video_paths.append(file_path)
+            for file_path in glob(path, recursive=recursive):
+                if self.check_if_video(file_path):
+                    video_paths.append(file_path)
+
+            # if os.path.isfile(path):
+            #     # File
+            # else:
+            #     logger.info(f"Finding video files inside {path} ...")
+            #     # Folder
+            #     for file_path in glob(os.path.join(path, "**"), recursive=recursive):
+            #         if os.path.isfile(file_path):
+            #             if self.check_if_video(file_path):
+            #                 video_paths.append(file_path)
 
         video_paths = list(map(os.path.abspath, video_paths))
         logger.info(f"Found {len(video_paths)} videos")

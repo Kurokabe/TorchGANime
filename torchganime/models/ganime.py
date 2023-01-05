@@ -1,156 +1,175 @@
-from typing import List, Optional
-from transformers import GPT2Config, PreTrainedModel, PretrainedConfig
-from torchganime.models.vqgan import AutoencoderConfig
-import pytorch_lightning as pl
-from dataclasses import dataclass
-from torchganime.models.vqgan import VQGAN
-from transformers import GPT2LMHeadModel
+from typing import Union, Optional, List
+import os
 import torch
+from transformers import get_scheduler
+import pytorch_lightning as pl
+from torchganime.models.video_transformer import (
+    VideoTransformer,
+    VideoTransformerConfig,
+)
+import deepspeed
 
-import torch.nn.functional as F
-
-
-# class VQGANConfig(PretrainedConfig):
-#     model_type = "vqgan"
-
-#     def __init__(
-#         self,
-#         *,
-#         embed_dim: int = 256,
-#         n_embed: int = 50257,
-#         channels: int = 256,
-#         z_channels: int = 256,
-#         resolution: int = 256,
-#         in_channels: int = 3,
-#         out_channels: int = 3,
-#         ch_mult: List[int] = [1, 1, 2, 2],
-#         n_res_blocks: int = 2,
-#         attn_resolutions: List[int] = [32],
-#         dropout: float = 0.0,
-#         resamp_with_conv: bool = True,
-#         ckpt_path: Optional[str] = None,
-#         **kwargs
-#     ):
-#         super().__init__(**kwargs)
-#         self.embed_dim = embed_dim
-#         self.n_embed = n_embed
-#         self.channels = channels
-#         self.z_channels = z_channels
-#         self.resolution = resolution
-#         self.in_channels = in_channels
-#         self.out_channels = out_channels
-#         self.ch_mult = ch_mult
-#         self.n_res_blocks = n_res_blocks
-#         self.attn_resolutions = attn_resolutions
-#         self.dropout = dropout
-#         self.resamp_with_conv = resamp_with_conv
+# from torch.optim import AdamW
+# from colossalai.nn.optimizer import HybridAdam
+from deepspeed.ops.adam import DeepSpeedCPUAdam
+from loguru import logger
 
 
-class GANimeConfig(PretrainedConfig):
-    model_type = "ganime"
+def pad_tensor(vec, pad, dim):
+    """
+    args:
+        vec - tensor to pad
+        pad - the size to pad to
+        dim - dimension to pad
 
+    return:
+        a new tensor padded to 'pad' in dimension 'dim'
+    """
+    pad_size = list(vec.shape)
+    pad_size[dim] = pad - vec.size(dim)
+    return torch.cat([vec.to("cpu"), torch.zeros(*pad_size).to("cpu")], dim=dim)
+
+
+class GANime(pl.LightningModule):
     def __init__(
         self,
-        vqgan_ckpt_path: str,
-        transformer_config: GPT2Config,
-        transformer_ckpt_path: Optional[str] = None,
-        **kwargs
+        learning_rate: float,
+        vqgan_ckpt_path: Union[str, os.PathLike],
+        vocab_size: Optional[int] = None,
+        n_positions: Optional[int] = None,
+        n_embd: Optional[int] = None,
+        n_layer: Optional[int] = None,
+        n_head: Optional[int] = None,
+        transformer_ckpt_path: Optional[Union[str, os.PathLike]] = None,
     ):
-        super().__init__(**kwargs)
-        self.vqgan_ckpt_path = vqgan_ckpt_path
-        self.transformer_config = transformer_config
-        self.transformer_ckpt_path = transformer_ckpt_path
+        super().__init__()
+        self.save_hyperparameters()
+        self.learning_rate = learning_rate
+        config = VideoTransformerConfig(
+            vqgan_ckpt_path,
+            vocab_size,
+            n_positions,
+            n_embd,
+            n_layer,
+            n_head,
+            transformer_ckpt_path,
+        )
+        self.video_transformer = VideoTransformer(config)
+        self.video_transformer.gradient_checkpointing_enable()
 
+    def forward(self, input, target=None):
+        first_frames = input["first_frame"]
+        end_frames = input["end_frame"]
+        frame_number = input["frame_number"]
+        return self.video_transformer(first_frames, end_frames, frame_number, target)
 
-class GANime(PreTrainedModel):
-    config_class = GANimeConfig
+    def training_step(self, batch, batch_idx):
+        input, target = batch
+        output = self(input, target)
+        loss = output["loss"]
+        self.log(
+            "train/loss",
+            loss,
+            prog_bar=True,
+            logger=True,
+            on_step=True,
+            on_epoch=True,
+        )
+        return loss
 
-    def __init__(
-        self,
-        config: GANimeConfig,
-    ):
-        super().__init__(config)
-        self.vqgan: VQGAN = VQGAN.load_from_checkpoint(config.vqgan_ckpt_path)
-        self.transformer = GPT2LMHeadModel(config.transformer_config).from_pretrained(
-            config.transformer_ckpt_path
+    def on_validation_epoch_start(self) -> None:
+        self.sample_videos_real = []
+        self.sample_videos_gen = []
+
+    def validation_step(self, batch, batch_idx):
+        input, target = batch
+        output = self(input, target)
+        loss = output["loss"]
+        gen_video = output["video"]
+        self.log(
+            "val/loss",
+            loss,
+            prog_bar=True,
+            logger=True,
+            on_step=True,
+            on_epoch=True,
+            sync_dist=True,
         )
 
-    def forward(self, tensor, labels=None):
+        if batch_idx < 4:
+            if self.current_epoch == 0:
+                self.sample_videos_real.append(target)  # .detach())
+            self.sample_videos_gen.append(gen_video)  # .detach())
 
-        first_frames = tensor["first_frame"]
-        end_frames = tensor["end_frame"]
-        frame_number = tensor["frame_number"]
+        return self.log_dict
 
-        if "target" in tensor:
-            target = tensor["target"]
+    def preprocess_videos_for_logging(self, videos: List[torch.Tensor]):
+        max_video_len = max([b.shape[2] for b in videos])
+        videos = [pad_tensor(b, pad=max_video_len, dim=2) for b in videos]
+        videos = torch.cat(videos, dim=0)
+        videos = videos.permute(0, 2, 1, 3, 4)
+        # videos values are between -1 and 1, normalize to 0 and 1
+        videos = (videos + 1) / 2
+        return videos
 
-        # logits = self.model(tensor)
-        # if labels is not None:
-        #     loss = torch.nn.cross_entropy(logits, labels)
-        #     return {"loss": loss, "logits": logits}
-        # return {"logits": logits}
-
-        return self.predict(first_frames, end_frames, frame_number, target)
-
-    @torch.no_grad()
-    def encode(self, frame):
-        quant_z, _, info = self.vqgan.encode(frame)
-        indices = info[2].view(quant_z.shape[0], -1)
-        return quant_z, indices
-
-    @torch.no_grad()
-    def decode_to_img(self, index, zshape):
-        bhwc = (zshape[0], zshape[2], zshape[3], zshape[1])
-        quant_z = self.vqgan.quantize.get_codebook_entry(index.reshape(-1), shape=bhwc)
-        x = self.vqgan.decode(quant_z)
-        return x
-
-    def predict_next_indices(self, previous_frames_indices, end_frames_indices):
-        input = torch.cat((previous_frames_indices, end_frames_indices), dim=1)
-        logits = self.transformer(input).logits
-        # cut off conditioning
-        logits = logits[:, end_frames_indices.shape[1] :]
-        probs = F.softmax(logits, dim=-1)
-        _, ix = torch.topk(probs, k=1, dim=-1)
-        ix = torch.squeeze(ix)
-        return ix, logits
-
-    def predict(
-        self, first_frames, end_frames, frame_number: torch.tensor, target=None
-    ) -> dict:
-        frame_number.max()
-        first_frames_quant, first_frames_indices = self.encode(first_frames)
-        _, end_frames_indices = self.encode(end_frames)
-
-        generated_frames_indices = [first_frames_indices]
-        predicted_logits = []
-        for i in range(1, 5):  # frame_number.max()):
-            remaining_frames = frame_number - i
-
-            next_frame_indices, logits = self.predict_next_indices(
-                generated_frames_indices[-1], end_frames_indices
+    def validation_epoch_end(self, outputs):
+        # TODO remove pad_tensor to utils
+        # TODO refactor this into a function
+        if self.current_epoch == 0:
+            real_videos = self.preprocess_videos_for_logging(self.sample_videos_real)
+            self.logger.experiment.add_video(
+                "videos_real",
+                real_videos,
+                self.current_epoch,
+                fps=10,
             )
-            predicted_logits.append(logits)
-            generated_frames_indices.append(next_frame_indices)
 
-        generated_video = [
-            self.decode_to_img(frame_indices, first_frames_quant.shape)
-            for frame_indices in generated_frames_indices
-        ]
-        generated_video = torch.stack(generated_video, dim=2)
+        rec_videos = self.preprocess_videos_for_logging(self.sample_videos_gen)
+        self.logger.experiment.add_video(
+            "videos_rec",
+            rec_videos,
+            self.current_epoch,
+            fps=10,
+        )
 
-        if target is not None:
-            loss = 0
-            for i in range(len(predicted_logits)):
-                _, _, target_info = self.vqgan.encode(target[:, :, i])
-                target_indices = target_info[2]  # .view(target_quant.shape[0], -1)
-                logits = predicted_logits[
-                    i
-                ]  # .reshape(-1, predicted_logits[i].size(-1))
-                logits = logits.permute(0, 2, 1)
-                current_target = target_indices.reshape(logits.shape[0], -1)
-                # print(logits.shape, target.shape)
-                loss += F.cross_entropy(logits, current_target)
+    def configure_optimizers(self):
 
-            return {"loss": loss, "video": generated_video}
-        return {"video": generated_video}
+        optimizer = DeepSpeedCPUAdam(self.parameters(), lr=self.learning_rate)
+        lr_scheduler = get_scheduler(
+            "linear",
+            optimizer,
+            num_warmup_steps=0,
+            num_training_steps=1000,  # self.num_training_steps(),
+        )
+        return [optimizer], [lr_scheduler]
+
+    def num_training_steps(self) -> int:
+        # TODO change this with a corrected version of the commented function below
+        # num_steps = 14118
+        num_steps = 5000
+        num_epochs = 1000
+        return num_steps * num_epochs
+
+    # @property
+    # def num_training_steps(self) -> int:
+    #     """Total training steps inferred from datamodule and devices."""
+    #     self.trainer.reset_train_dataloader()
+
+    #     dataset = self.train_dataloader().loaders
+    #     if self.trainer.max_steps:
+    #         return self.trainer.max_steps
+
+    #     dataset_size = (
+    #         self.trainer.limit_train_batches
+    #         if self.trainer.limit_train_batches != 0
+    #         else len(dataset)
+    #     )
+
+    #     num_devices = max(1, self.trainer.num_gpus, self.trainer.num_processes)
+    #     if self.trainer.tpu_cores:
+    #         num_devices = max(num_devices, self.trainer.tpu_cores)
+
+    #     effective_batch_size = (
+    #         dataset.batch_size * self.trainer.accumulate_grad_batches * num_devices
+    #     )
+    #     return (dataset_size // effective_batch_size) * self.trainer.max_epochs
