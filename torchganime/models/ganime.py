@@ -41,18 +41,20 @@ class GANime(pl.LightningModule):
         n_layer: Optional[int] = None,
         n_head: Optional[int] = None,
         transformer_ckpt_path: Optional[Union[str, os.PathLike]] = None,
+        use_position_embeddings: bool = True,
     ):
         super().__init__()
         self.save_hyperparameters()
         self.learning_rate = learning_rate
         config = VideoTransformerConfig(
-            vqgan_ckpt_path,
-            vocab_size,
-            n_positions,
-            n_embd,
-            n_layer,
-            n_head,
-            transformer_ckpt_path,
+            vqgan_ckpt_path=vqgan_ckpt_path,
+            vocab_size=vocab_size,
+            n_positions=n_positions,
+            n_embd=n_embd,
+            n_layer=n_layer,
+            n_head=n_head,
+            transformer_ckpt_path=transformer_ckpt_path,
+            use_position_embeddings=use_position_embeddings,
         )
         self.video_transformer = VideoTransformer(config)
         self.video_transformer.gradient_checkpointing_enable()
@@ -139,14 +141,14 @@ class GANime(pl.LightningModule):
             "linear",
             optimizer,
             num_warmup_steps=0,
-            num_training_steps=1000,  # self.num_training_steps(),
+            num_training_steps=self.num_training_steps(),
         )
         return [optimizer], [lr_scheduler]
 
     def num_training_steps(self) -> int:
         # TODO change this with a corrected version of the commented function below
         # num_steps = 14118
-        num_steps = 5000
+        num_steps = 1000
         num_epochs = 1000
         return num_steps * num_epochs
 

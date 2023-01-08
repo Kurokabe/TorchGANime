@@ -12,6 +12,7 @@ import math
 from torch import nn, Tensor
 import torch.nn.functional as F
 from loguru import logger
+from functools import cache
 
 
 # class VQGANConfig(PretrainedConfig):
@@ -63,6 +64,7 @@ class VideoTransformerConfig(PretrainedConfig):
         n_head: int = 12,
         # transformer_config: GPT2Config = GPT2Config(),
         transformer_ckpt_path: Optional[str] = None,
+        use_position_embeddings: bool = True,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -75,6 +77,7 @@ class VideoTransformerConfig(PretrainedConfig):
         self.n_layer = n_layer
         self.n_head = n_head
         self.transformer_ckpt_path = transformer_ckpt_path
+        self.use_position_embeddings = use_position_embeddings
 
 
 class VideoTransformer(PreTrainedModel):
@@ -85,6 +88,7 @@ class VideoTransformer(PreTrainedModel):
         config: VideoTransformerConfig,
     ):
         super().__init__(config)
+        self.config: VideoTransformerConfig
         self.vqgan: VQGAN = VQGAN.load_from_checkpoint(config.vqgan_ckpt_path)
         self.vqgan.eval()
         self.vqgan.requires_grad_(False)
@@ -136,18 +140,64 @@ class VideoTransformer(PreTrainedModel):
         x = self.vqgan.decode(quant_z)
         return x
 
-    def predict_next_indices(self, previous_frames_indices, end_frames_indices):
+    def predict_next_indices(
+        self,
+        previous_frames_indices,
+        end_frames_indices,
+        current_frame_number,
+        frame_number,
+    ):
         previous_frames_indices = previous_frames_indices.reshape(
             end_frames_indices.shape
         )
-        input = torch.cat((previous_frames_indices, end_frames_indices), dim=1)
-        logits = self.transformer(input).logits
+
+        if self.config.use_position_embeddings:
+            position_ids = self.compute_position_ids(
+                current_frame_number, frame_number, end_frames_indices.shape[1]
+            )
+        else:
+            position_ids = None
+
+        input = torch.stack((previous_frames_indices, end_frames_indices), dim=1)
+        # attention_mask = self.get_attention_mask(
+        #     input, current_frame_number, frame_number
+        # )
+
+        logits = self.transformer(
+            input,
+            position_ids=position_ids,  # attention_mask=attention_mask
+        ).logits
         # cut off conditioning
-        logits = logits[:, end_frames_indices.shape[1] :]
+        logits = logits[:, 1]
         probs = F.softmax(logits, dim=-1)
         _, ix = torch.topk(probs, k=1, dim=-1)
         ix = torch.squeeze(ix)
         return ix, logits
+
+    def compute_position_ids(
+        self, current_frame_number, frame_number, frame_indices_shape
+    ):
+        position_id_end_frame = frame_number.view(1, -1).T.repeat(
+            1, frame_indices_shape
+        )
+        position_id_current_frame = (
+            torch.ones_like(position_id_end_frame) * current_frame_number
+        )
+        position_ids = torch.stack(
+            [position_id_current_frame, position_id_end_frame], dim=1
+        )
+        return position_ids
+
+    def get_attention_mask(self, transformer_input, current_frame_number, frame_number):
+        # Get for each batch element a value, 0 or 1 for the padding. 1 means not padded frame, 0 means padded frame
+        padded_mask = (frame_number > current_frame_number).type(torch.int)
+        target_shape = transformer_input.shape
+        # Expand the mask to the shape of the input
+        return (
+            padded_mask.view(len(padded_mask), *(1,) * (len(target_shape) - 1))
+            .expand(target_shape)
+            .contiguous()
+        )
 
     def predict(
         self, first_frames, end_frames, frame_number: torch.tensor, target=None
@@ -159,12 +209,12 @@ class VideoTransformer(PreTrainedModel):
         generated_frames_indices = [first_frames_indices]
         predicted_logits = []
         for i in range(1, frame_number.max()):
-            remaining_frames = (
-                frame_number - i
-            )  # TODO add remaining frames to input as positional encoding
 
             next_frame_indices, logits = self.predict_next_indices(
-                generated_frames_indices[-1], end_frames_indices
+                generated_frames_indices[-1],
+                end_frames_indices,
+                current_frame_number=i,
+                frame_number=frame_number,
             )
             predicted_logits.append(logits)
             generated_frames_indices.append(next_frame_indices)
