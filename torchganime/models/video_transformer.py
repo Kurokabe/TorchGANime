@@ -13,7 +13,7 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 from loguru import logger
 from functools import cache
-
+from torchganime.models.modules.losses.lpips import LPIPS
 
 # class VQGANConfig(PretrainedConfig):
 #     model_type = "vqgan"
@@ -115,6 +115,7 @@ class VideoTransformer(PreTrainedModel):
             {self.transformer.config.n_head} heads
             {self.transformer.num_parameters() / 1e6:.0f}M parameters"""
             )
+        self.perceptual_loss = LPIPS().eval().requires_grad_(False)
 
     # def from_pretrained(
     #     self, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]]
@@ -227,6 +228,9 @@ class VideoTransformer(PreTrainedModel):
 
         if target is not None:
             loss = 0
+            scce_loss = 0
+            rec_loss = 0
+            p_loss = 0
             for i in range(len(predicted_logits)):
                 _, _, target_info = self.vqgan.encode(target[:, :, i])
                 target_indices = target_info[2]  # .view(target_quant.shape[0], -1)
@@ -235,10 +239,30 @@ class VideoTransformer(PreTrainedModel):
                 ]  # .reshape(-1, predicted_logits[i].size(-1))
                 logits = logits.permute(0, 2, 1)
                 current_target = target_indices.reshape(logits.shape[0], -1)
-                loss += F.cross_entropy(logits, current_target)
+                scce_loss += F.cross_entropy(logits, current_target)
 
-            loss /= len(predicted_logits)
-            return {"loss": loss, "video": generated_video}
+            scce_loss /= len(predicted_logits)
+
+            for i in range(len(generated_video)):
+                rec_loss += torch.abs(
+                    target[:, :, i].contiguous() - generated_video[:, :, i].contiguous()
+                )
+                p_loss += self.perceptual_loss(
+                    target[:, :, i].contiguous(), generated_video[:, :, i].contiguous()
+                )
+
+            nll_loss = rec_loss + p_loss
+            nll_loss /= len(generated_video)
+            # nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
+            nll_loss = torch.mean(nll_loss)
+            loss = scce_loss + nll_loss
+
+            return {
+                "loss": loss,
+                "scce_loss": scce_loss,
+                "nll_loss": nll_loss,
+                "video": generated_video,
+            }
         return {"video": generated_video}
 
     def gradient_checkpointing_enable(self):

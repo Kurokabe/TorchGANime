@@ -99,8 +99,8 @@ class GANime(pl.LightningModule):
         )
 
         if batch_idx < 4:
-            if self.current_epoch == 0:
-                self.sample_videos_real.append(target)  # .detach())
+            # if self.current_epoch == 0:
+            self.sample_videos_real.append(target)  # .detach())
             self.sample_videos_gen.append(gen_video)  # .detach())
 
         return self.log_dict
@@ -138,7 +138,7 @@ class GANime(pl.LightningModule):
 
         optimizer = DeepSpeedCPUAdam(self.parameters(), lr=self.learning_rate)
         lr_scheduler = get_scheduler(
-            "linear",
+            "cosine",
             optimizer,
             num_warmup_steps=0,
             num_training_steps=self.num_training_steps(),
@@ -148,8 +148,8 @@ class GANime(pl.LightningModule):
     def num_training_steps(self) -> int:
         # TODO change this with a corrected version of the commented function below
         # num_steps = 14118
-        num_steps = 1000
-        num_epochs = 1000
+        num_steps = 100
+        num_epochs = 200
         return num_steps * num_epochs
 
     # @property
