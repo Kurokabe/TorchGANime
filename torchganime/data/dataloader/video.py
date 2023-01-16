@@ -26,7 +26,7 @@ def pad_tensor(vec, pad, dim):
     return torch.cat([vec, torch.zeros(*pad_size)], dim=dim)
 
 
-class PadCollate:
+class PadCollateVideo:
     """
     a variant of collate_fn that pads according to the longest sequence in
     a batch of sequences. Returns a dictionary with keys:
@@ -79,6 +79,69 @@ class PadCollate:
         return self.pad_collate(batch)
 
 
+class CollateFirstLastFrame:
+    """
+    a variant of collate_fn that pads according to the longest sequence in
+    a batch of sequences. Returns a dictionary with keys:
+        target - the padded tensor
+        frame_number - the number of frames originally in each sequence (before padding)
+        first_frame - the first frame of each sequence
+        end_frame - the last frame of each sequence (before padding)
+    """
+
+    def __init__(self, dim=0):
+        """
+        args:
+            dim - the dimension to be padded (dimension of time in sequences)
+        """
+        self.dim = dim
+
+    def pad_collate(self, batch):
+        """
+        args:
+            batch - list of tensor
+
+        return dictionary with keys:
+            target - the padded tensor
+            frame_number - the number of frames originally in each sequence (before padding)
+            first_frame - the first frame of each sequence
+            end_frame - the last frame of each sequence (before padding)
+        """
+        # find longest sequence
+        frame_number = torch.tensor([b.shape[1] for b in batch])
+        # first_frames = [b[:, 0, :, :] for b in batch]
+        end_frames = [b[:, -1, :, :] for b in batch]
+
+        sample_frame_number = frame_number - 1
+        frames_to_keep = (
+            torch.rand(len(sample_frame_number)) * sample_frame_number
+        ).type(torch.int) + 1
+
+        current_frames = [
+            b[:, frames_to_keep[i] - 1, :, :] for i, b in enumerate(batch)
+        ]
+
+        # pad according to max_len
+        # batch = [pad_tensor(b, pad=max_len, dim=1) for b in batch]
+        batch = [b[:, frames_to_keep[i], :, :] for i, b in enumerate(batch)]
+
+        # stack all
+        target = torch.stack(batch, dim=0)
+        current_frames = torch.stack(current_frames, dim=0)
+        end_frames = torch.stack(end_frames, dim=0)
+
+        return {
+            # "frame_number": frame_number,
+            "current_frames": current_frames,
+            "end_frames": end_frames,
+            "remaining_frames": frame_number - frames_to_keep - 1,
+            # "frames_to_keep": frames_to_keep,
+        }, target
+
+    def __call__(self, batch):
+        return self.pad_collate(batch)
+
+
 class VideoData(pl.LightningDataModule):
     def __init__(
         self,
@@ -104,7 +167,7 @@ class VideoData(pl.LightningDataModule):
             self.make_transform(mode="train"),
             recursive=True,
             show_progress=True,
-            min_max_len=(15, 25),
+            # min_max_len=(15, 25),
             detector="content",
             threshold=15,
             min_scene_len=15,
@@ -115,7 +178,7 @@ class VideoData(pl.LightningDataModule):
             self.make_transform(mode="val"),
             recursive=True,
             show_progress=True,
-            min_max_len=(15, 25),
+            # min_max_len=(15, 25),
             detector="content",
             threshold=15,
             min_scene_len=15,
@@ -123,17 +186,24 @@ class VideoData(pl.LightningDataModule):
 
     def make_transform(self, mode="train"):
         if mode == "train":
-            try:
-                resized_shape = int(self.image_size * 1.2)
-            except TypeError:
-                resized_shape = tuple([int(x * 1.2) for x in self.image_size])
+            # try:
+            #     resized_shape = int(self.image_size * 1.2)
+            # except TypeError:
+            #     resized_shape = tuple([int(x * 1.2) for x in self.image_size])
 
+            # return transforms.Compose(
+            #     [
+            #         video_transforms.ToTensorVideo(),
+            #         transforms.Resize(resized_shape),
+            #         video_transforms.RandomCropVideo(self.image_size),
+            #         video_transforms.RandomHorizontalFlipVideo(),
+            #         self.normalize,
+            #     ]
+            # )
             return transforms.Compose(
                 [
                     video_transforms.ToTensorVideo(),
-                    transforms.Resize(resized_shape),
-                    video_transforms.RandomCropVideo(self.image_size),
-                    video_transforms.RandomHorizontalFlipVideo(),
+                    transforms.Resize(self.image_size),
                     self.normalize,
                 ]
             )
@@ -162,7 +232,7 @@ class VideoData(pl.LightningDataModule):
             drop_last=True,
             num_workers=self.num_workers,
             persistent_workers=True,
-            collate_fn=PadCollate(dim=0),
+            collate_fn=CollateFirstLastFrame(dim=0),
         )
         return dataloader
 
@@ -174,6 +244,7 @@ class VideoData(pl.LightningDataModule):
             drop_last=False,
             num_workers=self.num_workers,
             persistent_workers=True,
-            collate_fn=PadCollate(dim=0),
+            collate_fn=CollateFirstLastFrame(dim=0),
+            # collate_fn=PadCollateVideo(dim=0),
         )
         return dataloader
