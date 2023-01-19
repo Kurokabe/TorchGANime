@@ -141,8 +141,8 @@ class VideoTransformer(PreTrainedModel):
         input = torch.stack(
             (
                 remaining_frames,
-                current_frames_indices,
                 end_frames_indices,
+                current_frames_indices,
             ),
             dim=1,
         )

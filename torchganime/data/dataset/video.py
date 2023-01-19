@@ -111,8 +111,8 @@ class SceneDataset(Dataset):
 
         self.scenes = self.retrieve_scenes(self.video_paths)
         # TODO : add a shuffle parameter
-        if True:
-            random.shuffle(self.scenes)
+        # if True:
+        #     random.shuffle(self.scenes)
 
     def load_detector(
         self, detector: Literal["content", "threshold", "adaptive"], **kwargs
@@ -400,7 +400,9 @@ class SceneDataset(Dataset):
     def __getitem__(self, idx: int):
         scene = self.scenes[idx]
         vr = VideoReader(scene.video_path)
-        frames = vr.get_batch(range(scene.start, scene.end))
+        frames = vr.get_batch(
+            range(scene.start, scene.end, 3)
+        )  # TODO set 3 as a parameter
         # frames = frames.to(dtype=torch.float) / 255
         if self.transform:
             frames = self.transform(frames)
