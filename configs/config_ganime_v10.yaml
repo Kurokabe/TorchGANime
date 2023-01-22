@@ -12,6 +12,7 @@ trainer:
   # limit_train_batches: 1000
   limit_val_batches: 100
   # strategy: deepspeed_stage_3
+  max_epochs: -1
 model:
   learning_rate: 5e-4
   vqgan_ckpt_path: "/TorchGANime/checkpoints/vqgan_full/checkpoints/checkpoint.ckpt"
