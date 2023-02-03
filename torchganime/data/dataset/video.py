@@ -111,8 +111,8 @@ class SceneDataset(Dataset):
 
         self.scenes = self.retrieve_scenes(self.video_paths)
         # TODO : add a shuffle parameter
-        # if True:
-        #     random.shuffle(self.scenes)
+        if True:
+            random.shuffle(self.scenes)
 
     def load_detector(
         self, detector: Literal["content", "threshold", "adaptive"], **kwargs

@@ -186,27 +186,27 @@ class VideoData(pl.LightningDataModule):
 
     def make_transform(self, mode="train"):
         if mode == "train":
-            # try:
-            #     resized_shape = int(self.image_size * 1.2)
-            # except TypeError:
-            #     resized_shape = tuple([int(x * 1.2) for x in self.image_size])
+            try:
+                resized_shape = int(self.image_size * 1.2)
+            except TypeError:
+                resized_shape = tuple([int(x * 1.2) for x in self.image_size])
 
-            # return transforms.Compose(
-            #     [
-            #         video_transforms.ToTensorVideo(),
-            #         transforms.Resize(resized_shape),
-            #         video_transforms.RandomCropVideo(self.image_size),
-            #         video_transforms.RandomHorizontalFlipVideo(),
-            #         self.normalize,
-            #     ]
-            # )
             return transforms.Compose(
                 [
                     video_transforms.ToTensorVideo(),
-                    transforms.Resize(self.image_size),
+                    transforms.Resize(resized_shape),
+                    video_transforms.RandomCropVideo(self.image_size),
+                    video_transforms.RandomHorizontalFlipVideo(),
                     self.normalize,
                 ]
             )
+            # return transforms.Compose(
+            #     [
+            #         video_transforms.ToTensorVideo(),
+            #         transforms.Resize(self.image_size),
+            #         self.normalize,
+            #     ]
+            # )
         elif mode == "val":
             return transforms.Compose(
                 [

@@ -18,7 +18,7 @@ model:
   perceptual_loss_weight: 1.0
 data:
   train_paths: 
-    - "/TorchGANime/data/*/raw_videos/01.mkv"
+    # - "/TorchGANime/data/*/raw_videos/01.mkv"
     - "/TorchGANime/data/*/raw_videos/02.mkv"
     # - "/TorchGANime/data/*/raw_videos/*0.mkv"
     # - "/TorchGANime/data/*/raw_videos/*1.mkv"

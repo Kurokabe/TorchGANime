@@ -72,6 +72,7 @@ class GANime(pl.LightningModule):
             current_frames, end_frames, remaining_frames, target
         )
 
+    @torch.no_grad()
     def sample(self, first_frames, end_frames, frame_number):
         batch_size = first_frames.shape[0]
         frame_number = torch.tensor(frame_number).repeat(batch_size).to(self.device)
@@ -133,7 +134,7 @@ class GANime(pl.LightningModule):
         self.log_dict(
             other_losses, prog_bar=False, logger=True, on_step=True, on_epoch=True
         )
-        if batch_idx < 4:
+        if batch_idx < 1:
             self.sample_videos_gen.append(
                 self.sample(
                     input["current_frames"], input["end_frames"], frame_number=15

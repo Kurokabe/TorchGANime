@@ -16,7 +16,7 @@ def cli_main():
         trainer_defaults={
             "callbacks": [checkpoint_callback, lr_monitor],
             "strategy": DeepSpeedStrategy(
-                stage=1,
+                stage=2,
                 offload_optimizer=True,
                 offload_parameters=False,
             ),

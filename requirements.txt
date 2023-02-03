@@ -15,3 +15,5 @@ loguru
 transformers
 decord
 moviepy
+gradio
+ffmpegio
