@@ -2,7 +2,7 @@ from typing import List, Union
 import os
 import pytorch_lightning as pl
 
-from torchganime.data.dataset.video import SceneDataset
+from scenedataset.scenedataset import SceneDataset
 
 # from pytorchvideo import transforms as video_transforms
 from torch.utils.data import DataLoader
@@ -167,10 +167,12 @@ class VideoData(pl.LightningDataModule):
             self.make_transform(mode="train"),
             recursive=True,
             show_progress=True,
-            # min_max_len=(15, 25),
+            min_max_len=(15, 25),
             detector="content",
             threshold=15,
             min_scene_len=15,
+            duplicate_metric="lpips",
+            duplicate_threshold=0.01,
         )
 
         self.val_dataset = SceneDataset(
@@ -178,10 +180,12 @@ class VideoData(pl.LightningDataModule):
             self.make_transform(mode="val"),
             recursive=True,
             show_progress=True,
-            # min_max_len=(15, 25),
+            min_max_len=(15, 25),
             detector="content",
             threshold=15,
             min_scene_len=15,
+            duplicate_metric="lpips",
+            duplicate_threshold=0.01,
         )
 
     def make_transform(self, mode="train"):
@@ -232,7 +236,8 @@ class VideoData(pl.LightningDataModule):
             drop_last=True,
             num_workers=self.num_workers,
             persistent_workers=True,
-            collate_fn=CollateFirstLastFrame(dim=0),
+            # collate_fn=CollateFirstLastFrame(dim=0),
+            collate_fn=PadCollateVideo(dim=0),
         )
         return dataloader
 
@@ -244,7 +249,7 @@ class VideoData(pl.LightningDataModule):
             drop_last=False,
             num_workers=self.num_workers,
             persistent_workers=True,
-            collate_fn=CollateFirstLastFrame(dim=0),
-            # collate_fn=PadCollateVideo(dim=0),
+            # collate_fn=CollateFirstLastFrame(dim=0),
+            collate_fn=PadCollateVideo(dim=0),
         )
         return dataloader

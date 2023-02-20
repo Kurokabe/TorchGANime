@@ -36,7 +36,7 @@ data:
     - "/TorchGANime/data/*/raw_videos/*8.mkv"
   val_paths:
     - "/TorchGANime/data/*/raw_videos/*9.mkv"
-  batch_size: 20
+  batch_size: 24
   num_workers: 16
   image_size: 
     - 128 
