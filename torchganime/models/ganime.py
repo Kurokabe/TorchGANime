@@ -10,9 +10,10 @@ from torchganime.models.video_transformer import (
 import deepspeed
 import torchvision
 
-# from torch.optim import AdamW
+from torch.optim import AdamW
+
 # from colossalai.nn.optimizer import HybridAdam
-from deepspeed.ops.adam import DeepSpeedCPUAdam
+from deepspeed.ops.adam import DeepSpeedCPUAdam, FusedAdam
 from loguru import logger
 
 
@@ -65,12 +66,16 @@ class GANime(pl.LightningModule):
         self.video_transformer.gradient_checkpointing_enable()
 
     def forward(self, input, target=None):
-        current_frames = input["current_frames"]
-        end_frames = input["end_frames"]
-        remaining_frames = input["remaining_frames"]
-        return self.video_transformer(
-            current_frames, end_frames, remaining_frames, target
-        )
+        first_frame = input["first_frame"]
+        end_frame = input["end_frame"]
+        frame_number = input["frame_number"]
+        return self.video_transformer(first_frame, end_frame, frame_number, target)
+        # current_frames = input["current_frames"]
+        # end_frames = input["end_frames"]
+        # remaining_frames = input["remaining_frames"]
+        # return self.video_transformer(
+        #     current_frames, end_frames, remaining_frames, target
+        # )
 
     @torch.no_grad()
     def sample(self, first_frames, end_frames, frame_number):
@@ -109,15 +114,15 @@ class GANime(pl.LightningModule):
         self.sample_videos_real = []
         self.sample_videos_gen = []
         self.current_frames = []
-        self.end_frames = []
-        self.predicted_frames = []
-        self.target_frames = []
+        # self.end_frames = []
+        # self.predicted_frames = []
+        # self.target_frames = []
 
     def validation_step(self, batch, batch_idx):
         input, target = batch
         output = self(input, target)
         loss = output["loss"]
-        # gen_video = output["video"]
+        gen_video = output["video"]
         self.log(
             "val/loss",
             loss,
@@ -134,20 +139,20 @@ class GANime(pl.LightningModule):
         self.log_dict(
             other_losses, prog_bar=False, logger=True, on_step=True, on_epoch=True
         )
-        if batch_idx < 1:
-            self.sample_videos_gen.append(
-                self.sample(
-                    input["current_frames"], input["end_frames"], frame_number=15
-                )
-            )
+        if batch_idx < 16:
+            # self.sample_videos_gen.append(
+            #     self.sample(
+            #         input["current_frames"], input["end_frames"], frame_number=15
+            #     )
+            # )
 
-            self.current_frames.append(input["current_frames"])
-            self.end_frames.append(input["end_frames"])
-            self.predicted_frames.append(output["next_frame"])
-            self.target_frames.append(target)
-        #     # if self.current_epoch == 0:
-        #     self.sample_videos_real.append(target)  # .detach())
-        #     self.sample_videos_gen.append(gen_video)  # .detach())
+            # self.current_frames.append(input["current_frames"])
+            # self.end_frames.append(input["end_frames"])
+            # self.predicted_frames.append(output["next_frame"])
+            # self.target_frames.append(target)
+            # if self.current_epoch == 0:
+            self.sample_videos_real.append(target)  # .detach())
+            self.sample_videos_gen.append(gen_video)  # .detach())
 
         return self.log_dict
 
@@ -196,29 +201,36 @@ class GANime(pl.LightningModule):
         # TODO remove pad_tensor to utils
         # TODO refactor this into a function
         # if self.current_epoch == 0:
-        #     real_videos = self.preprocess_videos_for_logging(self.sample_videos_real)
-        #     self.logger.experiment.add_video(
-        #         "videos_real",
-        #         real_videos,
-        #         self.current_epoch,
-        #         fps=10,
-        #     )
-
-        rec_videos = self.preprocess_videos_for_logging(self.sample_videos_gen)
+        real_videos = self.preprocess_videos_for_logging(self.sample_videos_real)
+        self.logger.experiment.add_video(
+            "videos_real",
+            real_videos,
+            self.current_epoch,
+            fps=10,
+        )
+        gen_videos = self.preprocess_videos_for_logging(self.sample_videos_gen)
         self.logger.experiment.add_video(
             "videos_rec",
-            rec_videos,
+            gen_videos,
             self.current_epoch,
             fps=10,
         )
 
-        self.log_images(
-            self.current_frames,
-            self.end_frames,
-            self.predicted_frames,
-            self.target_frames,
-            "val/current_end_predicted_target",
-        )
+        # rec_videos = self.preprocess_videos_for_logging(self.sample_videos_gen)
+        # self.logger.experiment.add_video(
+        #     "videos_rec",
+        #     rec_videos,
+        #     self.current_epoch,
+        #     fps=10,
+        # )
+
+        # self.log_images(
+        #     self.current_frames,
+        #     self.end_frames,
+        #     self.predicted_frames,
+        #     self.target_frames,
+        #     "val/current_end_predicted_target",
+        # )
 
     def configure_optimizers(self):
 
@@ -226,10 +238,11 @@ class GANime(pl.LightningModule):
         lr_scheduler = get_scheduler(
             "cosine",
             optimizer,
-            num_warmup_steps=0,
-            num_training_steps=self.num_training_steps(),
+            num_warmup_steps=int(self.trainer.estimated_stepping_batches * 0.15),
+            num_training_steps=self.trainer.estimated_stepping_batches,
         )
-        return [optimizer], []  # [lr_scheduler]
+
+        return [optimizer], [lr_scheduler]
 
     def num_training_steps(self) -> int:
         # TODO change this with a corrected version of the commented function below

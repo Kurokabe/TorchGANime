@@ -121,44 +121,37 @@ class VideoTransformer(PreTrainedModel):
             )
         self.perceptual_loss = LPIPS().eval().requires_grad_(False)
 
-    # def from_pretrained(
-    #     self, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]]
+    # def predict_next_indices(
+    #     self,
+    #     current_frames_indices: torch.tensor,
+    #     end_frames_indices: torch.tensor,
+    #     remaining_frames: torch.tensor,
     # ):
-    #     self.transformer = self.transformer.from_pretrained(
-    #         pretrained_model_name_or_path
+    #     remaining_frames = remaining_frames.view(1, -1).T.repeat(
+    #         1, end_frames_indices.shape[1]
     #     )
 
-    def predict_next_indices(
-        self,
-        current_frames_indices: torch.tensor,
-        end_frames_indices: torch.tensor,
-        remaining_frames: torch.tensor,
-    ):
-        remaining_frames = remaining_frames.view(1, -1).T.repeat(
-            1, end_frames_indices.shape[1]
-        )
+    #     input = torch.stack(
+    #         (
+    #             remaining_frames,
+    #             end_frames_indices,
+    #             current_frames_indices,
+    #         ),
+    #         dim=1,
+    #     )
+    #     if self.config.use_token_type_ids:
+    #         token_type_ids = torch.zeros_like(input)
+    #         token_type_ids[:, 1:] = 1
+    #     else:
+    #         token_type_ids = None
+    #     logits = self.transformer(input, token_type_ids=token_type_ids).logits
 
-        input = torch.stack(
-            (
-                remaining_frames,
-                end_frames_indices,
-                current_frames_indices,
-            ),
-            dim=1,
-        )
-        if self.config.use_token_type_ids:
-            token_type_ids = torch.zeros_like(input)
-            token_type_ids[:, 1:] = 1
-        else:
-            token_type_ids = None
-        logits = self.transformer(input, token_type_ids=token_type_ids).logits
-
-        # cut off conditioning
-        logits = logits[:, -1]
-        probs = F.softmax(logits, dim=-1)
-        _, ix = torch.topk(probs, k=1, dim=-1)
-        next_frame_indices = torch.squeeze(ix)
-        return next_frame_indices, logits
+    #     # cut off conditioning
+    #     logits = logits[:, -1]
+    #     probs = F.softmax(logits, dim=-1)
+    #     _, ix = torch.topk(probs, k=1, dim=-1)
+    #     next_frame_indices = torch.squeeze(ix)
+    #     return next_frame_indices, logits
 
     def get_visual_loss(
         self, target_frame: torch.tensor, predicted_frame: torch.tensor
@@ -182,38 +175,48 @@ class VideoTransformer(PreTrainedModel):
 
     def forward(
         self,
-        current_frames: torch.tensor,
-        end_frames: torch.tensor,
-        remaining_frames: torch.tensor,
+        first_frame: torch.tensor,
+        end_frame: torch.tensor,
+        frame_number: torch.tensor,
         target: torch.tensor = None,
     ):
-        current_frames_quant, current_frames_indices = self.encode(current_frames)
-        _, end_frames_indices = self.encode(end_frames)
+        return self.predict(first_frame, end_frame, frame_number, target)
 
-        next_frame_indices, logits = self.predict_next_indices(
-            current_frames_indices, end_frames_indices, remaining_frames
-        )
+    # def forward(
+    #     self,
+    #     current_frames: torch.tensor,
+    #     end_frames: torch.tensor,
+    #     remaining_frames: torch.tensor,
+    #     target: torch.tensor = None,
+    # ):
 
-        next_frame = self.decode_to_img(next_frame_indices, current_frames_quant.shape)
+    # current_frames_quant, current_frames_indices = self.encode(current_frames)
+    # _, end_frames_indices = self.encode(end_frames)
 
-        if target is not None:
-            _, target_indices = self.encode(target)
-            logits = logits.permute(0, 2, 1)
-            target_indices = target_indices.reshape(logits.shape[0], -1)
-            scce_loss = F.cross_entropy(logits, target_indices)
-            nll_loss, rec_loss, p_loss = self.get_visual_loss(target, next_frame)
+    # next_frame_indices, logits = self.predict_next_indices(
+    #     current_frames_indices, end_frames_indices, remaining_frames
+    # )
 
-            loss = scce_loss + nll_loss
-            return {
-                "next_frame": next_frame,
-                "loss": loss,
-                "scce_loss": scce_loss,
-                "nll_loss": nll_loss,
-                "rec_loss": rec_loss,
-                "p_loss": p_loss,
-            }
+    # next_frame = self.decode_to_img(next_frame_indices, current_frames_quant.shape)
 
-        return {"next_frame": next_frame}
+    # if target is not None:
+    #     _, target_indices = self.encode(target)
+    #     logits = logits.permute(0, 2, 1)
+    #     target_indices = target_indices.reshape(logits.shape[0], -1)
+    #     scce_loss = F.cross_entropy(logits, target_indices)
+    #     nll_loss, rec_loss, p_loss = self.get_visual_loss(target, next_frame)
+
+    #     loss = scce_loss + nll_loss
+    #     return {
+    #         "next_frame": next_frame,
+    #         "loss": loss,
+    #         "scce_loss": scce_loss,
+    #         "nll_loss": nll_loss,
+    #         "rec_loss": rec_loss,
+    #         "p_loss": p_loss,
+    #     }
+
+    # return {"next_frame": next_frame}
 
     @torch.no_grad()
     def encode(self, frame):
@@ -228,39 +231,37 @@ class VideoTransformer(PreTrainedModel):
         x = self.vqgan.decode(quant_z)
         return x
 
-    # def predict_next_indices(
-    #     self,
-    #     previous_frames_indices,
-    #     end_frames_indices,
-    #     current_frame_number,
-    #     frame_number,
-    # ):
-    #     previous_frames_indices = previous_frames_indices.reshape(
-    #         end_frames_indices.shape
-    #     )
+    def predict_next_indices(
+        self,
+        previous_frames_indices,
+        end_frames_indices,
+        current_frame_number,
+        frame_number,
+    ):
+        previous_frames_indices = previous_frames_indices.reshape(
+            end_frames_indices.shape
+        )
 
-    #     if self.config.use_position_embeddings:
-    #         position_ids = self.compute_position_ids(
-    #             current_frame_number, frame_number, end_frames_indices.shape[1]
-    #         )
-    #     else:
-    #         position_ids = None
+        remaining_frames = (
+            (frame_number - current_frame_number)
+            .view(1, -1)
+            .T.repeat(1, end_frames_indices.shape[1])
+        )
 
-    #     input = torch.stack((previous_frames_indices, end_frames_indices), dim=1)
-    #     # attention_mask = self.get_attention_mask(
-    #     #     input, current_frame_number, frame_number
-    #     # )
+        input = torch.stack(
+            (remaining_frames, previous_frames_indices, end_frames_indices), dim=1
+        )
+        # attention_mask = self.get_attention_mask(
+        #     input, current_frame_number, frame_number
+        # )
 
-    #     logits = self.transformer(
-    #         input,
-    #         position_ids=position_ids,  # attention_mask=attention_mask
-    #     ).logits
-    #     # cut off conditioning
-    #     logits = logits[:, 1]
-    #     probs = F.softmax(logits, dim=-1)
-    #     _, ix = torch.topk(probs, k=1, dim=-1)
-    #     ix = torch.squeeze(ix)
-    #     return ix, logits
+        logits = self.transformer(input).logits
+        # cut off conditioning
+        logits = logits[:, -1]
+        probs = F.softmax(logits, dim=-1)
+        _, ix = torch.topk(probs, k=1, dim=-1)
+        ix = torch.squeeze(ix)
+        return ix, logits
 
     # def compute_position_ids(
     #     self, current_frame_number, frame_number, frame_indices_shape
@@ -287,75 +288,75 @@ class VideoTransformer(PreTrainedModel):
     #         .contiguous()
     #     )
 
-    # def predict(
-    #     self, first_frames, end_frames, frame_number: torch.tensor, target=None
-    # ) -> dict:
-    #     frame_number.max()
-    #     first_frames_quant, first_frames_indices = self.encode(first_frames)
-    #     _, end_frames_indices = self.encode(end_frames)
+    def predict(
+        self, first_frames, end_frames, frame_number: torch.tensor, target=None
+    ) -> dict:
 
-    #     generated_frames_indices = [first_frames_indices]
-    #     predicted_logits = []
-    #     for i in range(1, frame_number.max()):
+        first_frames_quant, first_frames_indices = self.encode(first_frames)
+        _, end_frames_indices = self.encode(end_frames)
 
-    #         if target is not None and self.training:
-    #             _, previous_frame_indices = self.encode(target[:, :, i - 1])
-    #         else:
-    #             previous_frame_indices = generated_frames_indices[-1]
+        generated_frames_indices = [first_frames_indices]
+        predicted_logits = []
+        for i in range(1, frame_number.max()):
 
-    #         next_frame_indices, logits = self.predict_next_indices(
-    #             previous_frame_indices,
-    #             end_frames_indices,
-    #             current_frame_number=i,
-    #             frame_number=frame_number,
-    #         )
-    #         predicted_logits.append(logits)
-    #         generated_frames_indices.append(next_frame_indices)
+            if target is not None and self.training:
+                _, previous_frame_indices = self.encode(target[:, :, i - 1])
+            else:
+                previous_frame_indices = generated_frames_indices[-1]
 
-    #     generated_video = [
-    #         self.decode_to_img(frame_indices, first_frames_quant.shape)
-    #         for frame_indices in generated_frames_indices
-    #     ]
-    #     generated_video = torch.stack(generated_video, dim=2)
+            next_frame_indices, logits = self.predict_next_indices(
+                previous_frame_indices,
+                end_frames_indices,
+                current_frame_number=i,
+                frame_number=frame_number,
+            )
+            predicted_logits.append(logits)
+            generated_frames_indices.append(next_frame_indices)
 
-    #     if target is not None:
-    #         loss = 0
-    #         scce_loss = 0
-    #         rec_loss = 0
-    #         p_loss = 0
-    #         for i in range(len(predicted_logits)):
-    #             _, _, target_info = self.vqgan.encode(target[:, :, i])
-    #             target_indices = target_info[2]  # .view(target_quant.shape[0], -1)
-    #             logits = predicted_logits[
-    #                 i
-    #             ]  # .reshape(-1, predicted_logits[i].size(-1))
-    #             logits = logits.permute(0, 2, 1)
-    #             current_target = target_indices.reshape(logits.shape[0], -1)
-    #             scce_loss += F.cross_entropy(logits, current_target)
+        generated_video = [
+            self.decode_to_img(frame_indices, first_frames_quant.shape)
+            for frame_indices in generated_frames_indices
+        ]
+        generated_video = torch.stack(generated_video, dim=2)
 
-    #         scce_loss /= len(predicted_logits)
+        if target is not None:
+            loss = 0
+            scce_loss = 0
+            rec_loss = 0
+            p_loss = 0
+            for i in range(len(predicted_logits)):
+                _, _, target_info = self.vqgan.encode(target[:, :, i])
+                target_indices = target_info[2]  # .view(target_quant.shape[0], -1)
+                logits = predicted_logits[
+                    i
+                ]  # .reshape(-1, predicted_logits[i].size(-1))
+                logits = logits.permute(0, 2, 1)
+                current_target = target_indices.reshape(logits.shape[0], -1)
+                scce_loss += F.cross_entropy(logits, current_target)
 
-    #         for i in range(len(generated_video)):
-    #             rec_loss += torch.abs(
-    #                 target[:, :, i].contiguous() - generated_video[:, :, i].contiguous()
-    #             )
-    #             p_loss += self.perceptual_loss(
-    #                 target[:, :, i].contiguous(), generated_video[:, :, i].contiguous()
-    #             )
+            scce_loss /= len(predicted_logits)
 
-    #         nll_loss = rec_loss + p_loss
-    #         nll_loss /= len(generated_video)
-    #         # nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
-    #         nll_loss = torch.mean(nll_loss)
-    #         loss = scce_loss + nll_loss
+            for i in range(len(generated_video)):
+                rec_loss += torch.abs(
+                    target[:, :, i].contiguous() - generated_video[:, :, i].contiguous()
+                )
+                p_loss += self.perceptual_loss(
+                    target[:, :, i].contiguous(), generated_video[:, :, i].contiguous()
+                )
 
-    #         return {
-    #             "loss": loss,
-    #             "scce_loss": scce_loss,
-    #             "nll_loss": nll_loss,
-    #             "video": generated_video,
-    #         }
-    #     return {"video": generated_video}
+            nll_loss = rec_loss + p_loss
+            nll_loss /= len(generated_video)
+            # nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
+            nll_loss = torch.mean(nll_loss)
+            loss = scce_loss + nll_loss
+
+            return {
+                "loss": loss,
+                "scce_loss": scce_loss,
+                "nll_loss": nll_loss,
+                "video": generated_video,
+            }
+        return {"video": generated_video}
 
     def gradient_checkpointing_enable(self):
         self.transformer.gradient_checkpointing_enable()
