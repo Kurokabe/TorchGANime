@@ -236,8 +236,8 @@ class VideoData(pl.LightningDataModule):
             drop_last=True,
             num_workers=self.num_workers,
             persistent_workers=True,
-            # collate_fn=CollateFirstLastFrame(dim=0),
-            collate_fn=PadCollateVideo(dim=0),
+            collate_fn=CollateFirstLastFrame(dim=0),
+            # collate_fn=PadCollateVideo(dim=0),
         )
         return dataloader
 
@@ -249,7 +249,7 @@ class VideoData(pl.LightningDataModule):
             drop_last=False,
             num_workers=self.num_workers,
             persistent_workers=True,
-            # collate_fn=CollateFirstLastFrame(dim=0),
-            collate_fn=PadCollateVideo(dim=0),
+            collate_fn=CollateFirstLastFrame(dim=0),
+            # collate_fn=PadCollateVideo(dim=0),
         )
         return dataloader

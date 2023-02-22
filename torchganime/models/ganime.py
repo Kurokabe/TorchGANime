@@ -226,10 +226,11 @@ class GANime(pl.LightningModule):
         lr_scheduler = get_scheduler(
             "cosine",
             optimizer,
-            num_warmup_steps=0,
-            num_training_steps=self.num_training_steps(),
+            num_warmup_steps=int(self.trainer.estimated_stepping_batches * 0.15),
+            num_training_steps=self.trainer.estimated_stepping_batches,
         )
-        return [optimizer], []  # [lr_scheduler]
+
+        return [optimizer], [lr_scheduler]
 
     def num_training_steps(self) -> int:
         # TODO change this with a corrected version of the commented function below

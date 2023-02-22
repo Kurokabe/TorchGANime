@@ -4,11 +4,14 @@ from torchganime.models.ganime import GANime
 from torchganime.data.dataloader.video import VideoData
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.strategies import DeepSpeedStrategy
+import torch
 
 
 def cli_main():
     checkpoint_callback = ModelCheckpoint(save_top_k=1, monitor="val/loss")
     lr_monitor = LearningRateMonitor(logging_interval="step")
+
+    torch.set_float32_matmul_precision("medium")
 
     cli = LightningCLI(
         GANime,
