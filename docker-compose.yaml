@@ -11,10 +11,7 @@ services:
     shm_size: '100gb'
     volumes:
       - "./:/TorchGANime"
-    ports:
-      - "8888:8888"
-    command: jupyter lab --allow-root --ip="*" --token=easy
-    #command: jupyter nbconvert --execute --to notebook /GANime/notebooks/model/vq-gan/min_gpt.ipynb
+    tty: true
     deploy:
       resources:
         reservations:

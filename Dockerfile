@@ -1,4 +1,4 @@
-FROM pytorchlightning/pytorch_lightning:base-cuda-py3.9-torch1.13-cuda11.7.0
+FROM pytorchlightning/pytorch_lightning:base-cuda-py3.9-torch1.13-cuda11.7.1
 # Because of https://developer.nvidia.com/blog/updating-the-cuda-linux-gpg-repository-key/ and https://github.com/NVIDIA/nvidia-docker/issues/1631#issuecomment-1112828208
 # RUN rm /etc/apt/sources.list.d/cuda.list
 # RUN rm /etc/apt/sources.list.d/nvidia-ml.list
@@ -21,7 +21,8 @@ ARG UID
 RUN useradd docker -o -l -u $UID -s /bin/bash -m
 USER docker
 
+# Install dependencies
+
 RUN pip install -r requirements.txt
 COPY . .
 RUN pip install -e .
-EXPOSE 8888
