@@ -5,6 +5,10 @@ trainer:
   - 1
   - 2
   - 3
+  - 4
+  - 5
+  - 6
+  - 7
   accumulate_grad_batches: 4
   accelerator: gpu
   precision: 16
@@ -38,7 +42,7 @@ data:
   val_paths:
     # - "/TorchGANime/data/*/raw_videos/*9.mkv"
     - "/TorchGANime/data/*/raw_videos/01.mkv"
-  batch_size: 1
+  batch_size: 2
   num_workers: 4
   image_size: 
     - 128 

@@ -274,3 +274,6 @@ class GANime(pl.LightningModule):
     #         dataset.batch_size * self.trainer.accumulate_grad_batches * num_devices
     #     )
     #     return (dataset_size // effective_batch_size) * self.trainer.max_epochs
+
+    def transfer_batch_to_device(self, batch, device, dataloader_idx):
+        return batch

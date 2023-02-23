@@ -1,4 +1,5 @@
 import os
+import gc
 
 from typing import List, Optional, Union
 from transformers import GPT2Config, PreTrainedModel, PretrainedConfig
@@ -241,9 +242,10 @@ class VideoTransformer(PreTrainedModel):
         previous_frames_indices = previous_frames_indices.reshape(
             end_frames_indices.shape
         )
+        remaining_frames = frame_number - current_frame_number
 
         remaining_frames = (
-            (frame_number - current_frame_number)
+            torch.clamp(frame_number - current_frame_number, min=0)
             .view(1, -1)
             .T.repeat(1, end_frames_indices.shape[1])
         )
@@ -291,16 +293,22 @@ class VideoTransformer(PreTrainedModel):
     def predict(
         self, first_frames, end_frames, frame_number: torch.tensor, target=None
     ) -> dict:
+    
+        first_frames = first_frames.to(self.device)
+        end_frames = end_frames.to(self.device)
+        frame_number = frame_number.to(self.device)
 
         first_frames_quant, first_frames_indices = self.encode(first_frames)
         _, end_frames_indices = self.encode(end_frames)
 
         generated_frames_indices = [first_frames_indices]
         predicted_logits = []
+
         for i in range(1, frame_number.max()):
 
             if target is not None and self.training:
-                _, previous_frame_indices = self.encode(target[:, :, i - 1])
+                previous_target = target[:, :, i - 1].to(self.device)
+                _, previous_frame_indices = self.encode(previous_target)
             else:
                 previous_frame_indices = generated_frames_indices[-1]
 
@@ -313,8 +321,18 @@ class VideoTransformer(PreTrainedModel):
             predicted_logits.append(logits)
             generated_frames_indices.append(next_frame_indices)
 
+            if target is not None and self.training:
+                previous_target.cpu()
+                previous_frame_indices.cpu()
+                del previous_target, previous_frame_indices
+            else:
+                previous_frame_indices.cpu
+                del previous_frame_indices
+
+
+
         generated_video = [
-            self.decode_to_img(frame_indices, first_frames_quant.shape)
+            self.decode_to_img(frame_indices, first_frames_quant.shape).cpu()
             for frame_indices in generated_frames_indices
         ]
         generated_video = torch.stack(generated_video, dim=2)
@@ -325,7 +343,9 @@ class VideoTransformer(PreTrainedModel):
             rec_loss = 0
             p_loss = 0
             for i in range(len(predicted_logits)):
-                _, _, target_info = self.vqgan.encode(target[:, :, i])
+                # current_target = target[:, :, i].to(self.device)
+                target_i = target[:, :, i].to(self.device)
+                _, _, target_info = self.vqgan.encode(target_i)
                 target_indices = target_info[2]  # .view(target_quant.shape[0], -1)
                 logits = predicted_logits[
                     i
@@ -333,27 +353,36 @@ class VideoTransformer(PreTrainedModel):
                 logits = logits.permute(0, 2, 1)
                 current_target = target_indices.reshape(logits.shape[0], -1)
                 scce_loss += F.cross_entropy(logits, current_target)
+                
+                target_i.cpu()
+                del target_i
+
+
 
             scce_loss /= len(predicted_logits)
 
-            for i in range(len(generated_video)):
-                rec_loss += torch.abs(
-                    target[:, :, i].contiguous() - generated_video[:, :, i].contiguous()
-                )
-                p_loss += self.perceptual_loss(
-                    target[:, :, i].contiguous(), generated_video[:, :, i].contiguous()
-                )
+            # for i in range(len(generated_video)):
+            #     rec_loss += torch.abs(
+            #         target[:, :, i].contiguous() - generated_video[:, :, i].contiguous()
+            #     )
+            #     p_loss += self.perceptual_loss(
+            #         target[:, :, i].contiguous(), generated_video[:, :, i].contiguous()
+            #     )
 
-            nll_loss = rec_loss + p_loss
-            nll_loss /= len(generated_video)
-            # nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
-            nll_loss = torch.mean(nll_loss)
-            loss = scce_loss + nll_loss
+            # nll_loss = rec_loss + p_loss
+            # nll_loss /= len(generated_video)
+            # # nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
+            # nll_loss = torch.mean(nll_loss)
+            loss = scce_loss  # + nll_loss
+
+            
+            gc.collect()
+            torch.cuda.empty_cache()
 
             return {
                 "loss": loss,
                 "scce_loss": scce_loss,
-                "nll_loss": nll_loss,
+                # "nll_loss": nll_loss,
                 "video": generated_video,
             }
         return {"video": generated_video}
