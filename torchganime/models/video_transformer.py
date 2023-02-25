@@ -134,11 +134,13 @@ class VideoTransformer(PreTrainedModel):
         end_frames_indices: torch.tensor,
         remaining_frames: torch.tensor,
     ):
-        remaining_frames = remaining_frames.view(1, -1).T.repeat(
-            1, end_frames_indices.shape[1]
-        )
+        # remaining_frames = remaining_frames.view(1, -1).T.repeat(
+        #     1, end_frames_indices.shape[1]
+        # )
+        remaining_frames = remaining_frames.view(-1, 1)
 
-        input = torch.stack(
+
+        input = torch.concat(
             (
                 remaining_frames,
                 end_frames_indices,
@@ -152,9 +154,8 @@ class VideoTransformer(PreTrainedModel):
         else:
             token_type_ids = None
         logits = self.transformer(input, token_type_ids=token_type_ids).logits
-
         # cut off conditioning
-        logits = logits[:, -1]
+        logits = logits[:, -end_frames_indices.shape[1]:]
         probs = F.softmax(logits, dim=-1)
         _, ix = torch.topk(probs, k=1, dim=-1)
         next_frame_indices = torch.squeeze(ix)

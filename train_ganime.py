@@ -18,11 +18,11 @@ def cli_main():
         VideoData,
         trainer_defaults={
             "callbacks": [checkpoint_callback, lr_monitor],
-            "strategy": DeepSpeedStrategy(
-                stage=2,
-                offload_optimizer=True,
-                offload_parameters=False,
-            ),
+            # "strategy": DeepSpeedStrategy(
+            #     stage=2,
+            #     offload_optimizer=True,
+            #     offload_parameters=False,
+            # ),
         },
     )
 

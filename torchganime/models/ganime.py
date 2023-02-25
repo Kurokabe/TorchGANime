@@ -10,7 +10,7 @@ from torchganime.models.video_transformer import (
 import deepspeed
 import torchvision
 
-# from torch.optim import AdamW
+from torch.optim import AdamW
 # from colossalai.nn.optimizer import HybridAdam
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from loguru import logger
@@ -95,12 +95,14 @@ class GANime(pl.LightningModule):
             logger=True,
             on_step=True,
             on_epoch=True,
+            sync_dist=True,
         )
         other_losses = {
             f"train/{key}": value for key, value in output.items() if "_loss" in key
         }
         self.log_dict(
-            other_losses, prog_bar=False, logger=True, on_step=True, on_epoch=True
+            other_losses, prog_bar=False, logger=True, on_step=True, on_epoch=True,
+            sync_dist=True,
         )
 
         return loss
@@ -132,7 +134,8 @@ class GANime(pl.LightningModule):
             f"val/{key}": value for key, value in output.items() if "_loss" in key
         }
         self.log_dict(
-            other_losses, prog_bar=False, logger=True, on_step=True, on_epoch=True
+            other_losses, prog_bar=False, logger=True, on_step=True, on_epoch=True,
+            sync_dist=True,
         )
         if batch_idx < 1:
             self.sample_videos_gen.append(
@@ -222,7 +225,8 @@ class GANime(pl.LightningModule):
 
     def configure_optimizers(self):
 
-        optimizer = DeepSpeedCPUAdam(self.parameters(), lr=self.learning_rate)
+        optimizer = AdamW(self.parameters(), lr=self.learning_rate)
+        # optimizer = DeepSpeedCPUAdam(self.parameters(), lr=self.learning_rate)
         lr_scheduler = get_scheduler(
             "cosine",
             optimizer,

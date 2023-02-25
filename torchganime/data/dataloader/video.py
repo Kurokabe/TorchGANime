@@ -167,7 +167,7 @@ class VideoData(pl.LightningDataModule):
             self.make_transform(mode="train"),
             recursive=True,
             show_progress=True,
-            min_max_len=(15, 25),
+            min_max_len=(10, 25),
             detector="content",
             threshold=15,
             min_scene_len=15,
@@ -180,7 +180,7 @@ class VideoData(pl.LightningDataModule):
             self.make_transform(mode="val"),
             recursive=True,
             show_progress=True,
-            min_max_len=(15, 25),
+            min_max_len=(10, 25),
             detector="content",
             threshold=15,
             min_scene_len=15,
@@ -195,22 +195,22 @@ class VideoData(pl.LightningDataModule):
             except TypeError:
                 resized_shape = tuple([int(x * 1.2) for x in self.image_size])
 
-            return transforms.Compose(
-                [
-                    video_transforms.ToTensorVideo(),
-                    transforms.Resize(resized_shape),
-                    video_transforms.RandomCropVideo(self.image_size),
-                    video_transforms.RandomHorizontalFlipVideo(),
-                    self.normalize,
-                ]
-            )
             # return transforms.Compose(
             #     [
             #         video_transforms.ToTensorVideo(),
-            #         transforms.Resize(self.image_size),
+            #         transforms.Resize(resized_shape),
+            #         video_transforms.RandomCropVideo(self.image_size),
+            #         video_transforms.RandomHorizontalFlipVideo(),
             #         self.normalize,
             #     ]
             # )
+            return transforms.Compose(
+                [
+                    video_transforms.ToTensorVideo(),
+                    transforms.Resize(self.image_size),
+                    self.normalize,
+                ]
+            )
         elif mode == "val":
             return transforms.Compose(
                 [
