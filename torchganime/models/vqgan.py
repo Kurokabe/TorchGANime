@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 import torchvision
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from .modules.diffusion.model import Decoder, Encoder
 from .modules.losses.vqperceptual import VQLPIPSWithDiscriminator
 from .modules.vqvae.quantize import VectorQuantizer
@@ -47,18 +47,6 @@ class VQGAN(pl.LightningModule):
         self,
         *,
         learning_rate: float,
-        # embed_dim: int,
-        # n_embed: int,
-        # channels: int,
-        # z_channels: int,
-        # resolution: int,
-        # in_channels: int = 3,
-        # out_channels: int = 3,
-        # ch_mult: List[int],
-        # n_res_blocks: int,
-        # attn_resolutions: List[int],
-        # dropout: float,
-        # resamp_with_conv: bool = True,
         autoencoder_config: AutoencoderConfig,
         loss_config: LossConfig,
     ):
@@ -194,9 +182,15 @@ class VQGAN(pl.LightningModule):
                 logger=True,
                 on_step=True,
                 on_epoch=True,
+                sync_dist=True,
             )
             self.log_dict(
-                log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=True
+                log_dict_disc,
+                prog_bar=False,
+                logger=True,
+                on_step=True,
+                on_epoch=True,
+                sync_dist=True,
             )
             return discloss
 
@@ -266,13 +260,15 @@ class VQGAN(pl.LightningModule):
         grid_real = torchvision.utils.make_grid(
             self.sample_images_real, normalize=True, value_range=(-1, 1)
         )
-        self.logger.experiment.add_image("images_real", grid_real, self.global_step)
+        self.logger.experiment.add_image(
+            "vqgan/images_real", grid_real, self.global_step
+        )
 
         self.sample_images_rec = torch.cat(self.sample_images_rec, dim=0)
         grid_rec = torchvision.utils.make_grid(
             self.sample_images_rec, normalize=True, value_range=(-1, 1)
         )
-        self.logger.experiment.add_image("images_rec", grid_rec, self.global_step)
+        self.logger.experiment.add_image("vqgan/images_rec", grid_rec, self.global_step)
 
     def configure_optimizers(self):
         lr = self.learning_rate
@@ -284,14 +280,20 @@ class VQGAN(pl.LightningModule):
             + list(self.post_quant_conv.parameters()),
             lr=lr,
             betas=(0.5, 0.9),
-            eps=1e-6,
+            # eps=1e-6,
         )
         opt_disc = torch.optim.Adam(
             self.loss.discriminator.parameters(),
             lr=lr,
             betas=(0.5, 0.9),
-            eps=1e-6,
+            # eps=1e-6,
         )
+
+        scheduler = CosineAnnealingLR(
+            opt_ae,
+            T_max=self.trainer.estimated_stepping_batches,  # Maximum number of iterations.
+            eta_min=1e-6,
+        )  # Minimum learning rate.
 
         # scheduler = ReduceLROnPlateau(
         #     opt_ae,
@@ -300,10 +302,4 @@ class VQGAN(pl.LightningModule):
         #     patience=2,
         # )
 
-        return [opt_ae, opt_disc], [
-            # {
-            #     "optimizer": opt_ae,
-            #     "scheduler": scheduler,
-            #     "monitor": "val/rec_loss_epoch",
-            # }
-        ]
+        return [opt_ae, opt_disc], [scheduler]

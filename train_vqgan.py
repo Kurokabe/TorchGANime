@@ -1,13 +1,15 @@
+import torch
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.cli import LightningCLI
 
-from torchganime.models.vqgan import VQGAN
 from torchganime.data.image import ImageData
-from pytorch_lightning.callbacks import ModelCheckpoint
+from torchganime.models.vqgan import VQGAN
 
 # from torchinfo import summary
 
 
 def cli_main():
+    torch.set_float32_matmul_precision("medium")
     checkpoint_callback = ModelCheckpoint(save_top_k=1, monitor="val/rec_loss_epoch")
     cli = LightningCLI(
         VQGAN, ImageData, trainer_defaults={"callbacks": [checkpoint_callback]}

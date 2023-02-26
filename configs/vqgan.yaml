@@ -9,31 +9,31 @@ trainer:
   - 5
   - 6
   - 7
-  accumulate_grad_batches: 5
+  accumulate_grad_batches: 24
   accelerator: gpu
-  precision: 16
+  # precision: 16
   gradient_clip_val: 1.0
   strategy: ddp
 model:
-  learning_rate: 4e-5
+  learning_rate: 5e-4
   autoencoder_config:
-    embed_dim: 256
-    n_embed: 50257
-    channels: 256
-    z_channels: 256
+    embed_dim: 128
+    n_embed: 1024
+    channels: 32
+    z_channels: 512
     resolution: 256
     in_channels: 3
     out_channels: 3
     ch_mult:
-    - 1
-    - 1
     - 2
-    - 2
+    - 4
+    - 8
+    - 8
     # - 4
-    n_res_blocks: 2
+    n_res_blocks: 1
     attn_resolutions:
-      - 32
-    dropout: 0.1
+      - 16
+    dropout: 0.0
     resamp_with_conv: True
   loss_config:
     disc_channels: 64
@@ -49,8 +49,8 @@ model:
 
 data:
   path: "/TorchGANime/data/full"
-  batch_size: 4
-  num_workers: 1
+  batch_size: 16
+  num_workers: 8
   image_size: 
     - 128 
     - 256
