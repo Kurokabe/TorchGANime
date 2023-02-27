@@ -9,9 +9,9 @@ trainer:
   - 5
   - 6
   - 7
-  accumulate_grad_batches: 24
+  accumulate_grad_batches: 2
   accelerator: gpu
-  # precision: 16
+  precision: 16
   gradient_clip_val: 1.0
   strategy: ddp
 model:
@@ -25,6 +25,7 @@ model:
     in_channels: 3
     out_channels: 3
     ch_mult:
+    # - 1
     - 2
     - 4
     - 8
@@ -49,8 +50,8 @@ model:
 
 data:
   path: "/TorchGANime/data/full"
-  batch_size: 16
+  batch_size: 96
   num_workers: 8
   image_size: 
-    - 128 
-    - 256
+    - 64 
+    - 128

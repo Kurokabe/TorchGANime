@@ -158,9 +158,15 @@ class VQGAN(pl.LightningModule):
                 logger=True,
                 on_step=True,
                 on_epoch=True,
+                sync_dist=True,
             )
             self.log_dict(
-                log_dict_ae, prog_bar=False, logger=True, on_step=True, on_epoch=True
+                log_dict_ae,
+                prog_bar=False,
+                logger=True,
+                on_step=True,
+                on_epoch=True,
+                sync_dist=True,
             )
             return aeloss
 

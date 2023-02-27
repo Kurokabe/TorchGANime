@@ -12,7 +12,9 @@ def cli_main():
     torch.set_float32_matmul_precision("medium")
     checkpoint_callback = ModelCheckpoint(save_top_k=1, monitor="val/rec_loss_epoch")
     cli = LightningCLI(
-        VQGAN, ImageData, trainer_defaults={"callbacks": [checkpoint_callback]}
+        VQGAN,
+        ImageData,
+        trainer_defaults={"callbacks": [checkpoint_callback]},
     )
 
     # summary(cli.model, input_size=(2, 3, 128, 256))
