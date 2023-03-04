@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Union, Optional, Tuple
 import os
 import pytorch_lightning as pl
 
@@ -150,6 +150,15 @@ class VideoData(pl.LightningDataModule):
         image_size: Union[int, List[int]] = 256,
         batch_size: int = 8,
         num_workers: int = 16,
+        detector: str = "content",
+        threshold: int = 15,
+        min_scene_len: int = 15,
+        min_max_len: Tuple[int, int] = (15, 25),
+        duplicate_metric: str = "lpips",
+        duplicate_threshold: float = 0.01,
+        device: str = "cpu",
+        root_dir: Optional[str] = None,
+        n_jobs: int = 1,
     ):
         super().__init__()
         self.prepare_data_per_node = False
@@ -167,12 +176,15 @@ class VideoData(pl.LightningDataModule):
             self.make_transform(mode="train"),
             recursive=True,
             show_progress=True,
-            min_max_len=(10, 25),
-            detector="content",
-            threshold=15,
-            min_scene_len=15,
-            duplicate_metric="lpips",
-            duplicate_threshold=0.01,
+            min_max_len=min_max_len,
+            detector=detector,
+            threshold=threshold,
+            min_scene_len=min_scene_len,
+            duplicate_metric=duplicate_metric,
+            duplicate_threshold=duplicate_threshold,
+            device=device,
+            root_dir=root_dir,
+            num_workers=n_jobs,
         )
 
         self.val_dataset = SceneDataset(
@@ -180,12 +192,15 @@ class VideoData(pl.LightningDataModule):
             self.make_transform(mode="val"),
             recursive=True,
             show_progress=True,
-            min_max_len=(10, 25),
-            detector="content",
-            threshold=15,
-            min_scene_len=15,
-            duplicate_metric="lpips",
-            duplicate_threshold=0.01,
+            min_max_len=min_max_len,
+            detector=detector,
+            threshold=threshold,
+            min_scene_len=min_scene_len,
+            duplicate_metric=duplicate_metric,
+            duplicate_threshold=duplicate_threshold,
+            device=device,
+            root_dir=root_dir,
+            num_workers=n_jobs,
         )
 
     def make_transform(self, mode="train"):

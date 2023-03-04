@@ -139,7 +139,6 @@ class VideoTransformer(PreTrainedModel):
         # )
         remaining_frames = remaining_frames.view(-1, 1)
 
-
         input = torch.concat(
             (
                 remaining_frames,
@@ -148,6 +147,7 @@ class VideoTransformer(PreTrainedModel):
             ),
             dim=1,
         )
+
         if self.config.use_token_type_ids:
             token_type_ids = torch.zeros_like(input)
             token_type_ids[:, 1:] = 1
@@ -155,7 +155,7 @@ class VideoTransformer(PreTrainedModel):
             token_type_ids = None
         logits = self.transformer(input, token_type_ids=token_type_ids).logits
         # cut off conditioning
-        logits = logits[:, -end_frames_indices.shape[1]:]
+        logits = logits[:, -end_frames_indices.shape[1] :]
         probs = F.softmax(logits, dim=-1)
         _, ix = torch.topk(probs, k=1, dim=-1)
         next_frame_indices = torch.squeeze(ix)
