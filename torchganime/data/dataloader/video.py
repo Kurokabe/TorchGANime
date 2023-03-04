@@ -1,4 +1,4 @@
-from typing import List, Union, Optional, Tuple
+from typing import List, Union, Optional, Tuple, Literal
 import os
 import pytorch_lightning as pl
 
@@ -70,9 +70,9 @@ class PadCollateVideo:
         end_frames = torch.stack(end_frames, dim=0)
 
         return {
-            "frame_number": frame_number,
-            "first_frame": first_frames,
-            "end_frame": end_frames,
+            "remaining_frames": frame_number,
+            "current_frames": first_frames,
+            "end_frames": end_frames,
         }, xs
 
     def __call__(self, batch):
@@ -159,6 +159,7 @@ class VideoData(pl.LightningDataModule):
         device: str = "cpu",
         root_dir: Optional[str] = None,
         n_jobs: int = 1,
+        default_mode: Literal["image", "video"] = "image",
     ):
         super().__init__()
         self.prepare_data_per_node = False
@@ -170,6 +171,13 @@ class VideoData(pl.LightningDataModule):
         self.normalize = video_transforms.NormalizeVideo(
             mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)
         )
+        # TODO change to use parameter from model so that is it not specified twice
+        self.mode = default_mode
+
+        if self.mode == "image":
+            self.collate_fn = CollateFirstLastFrame(dim=0)
+        elif self.mode == "video":
+            self.collate_fn = PadCollateVideo(dim=0)
 
         self.train_dataset = SceneDataset(
             self.train_paths,
@@ -201,6 +209,7 @@ class VideoData(pl.LightningDataModule):
             device=device,
             root_dir=root_dir,
             num_workers=n_jobs,
+            initial_shuffle=True,
         )
 
     def make_transform(self, mode="train"):
@@ -251,7 +260,7 @@ class VideoData(pl.LightningDataModule):
             drop_last=True,
             num_workers=self.num_workers,
             persistent_workers=True,
-            collate_fn=CollateFirstLastFrame(dim=0),
+            collate_fn=self.collate_fn,
             # collate_fn=PadCollateVideo(dim=0),
         )
         return dataloader
@@ -264,7 +273,7 @@ class VideoData(pl.LightningDataModule):
             drop_last=False,
             num_workers=self.num_workers,
             persistent_workers=True,
-            collate_fn=CollateFirstLastFrame(dim=0),
+            collate_fn=self.collate_fn,
             # collate_fn=PadCollateVideo(dim=0),
         )
         return dataloader

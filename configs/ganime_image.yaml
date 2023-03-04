@@ -26,6 +26,7 @@ model:
   use_token_type_ids: False
   rec_loss_weight: 0.0
   perceptual_loss_weight: 0.0
+  mode: "image" # "video"
 data:
   train_paths: 
     - "/TorchGANime/data/kny/raw_videos/0*.mkv"

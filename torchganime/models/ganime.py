@@ -1,4 +1,4 @@
-from typing import Union, Optional, List
+from typing import Union, Optional, List, Literal
 import os
 import torch
 from transformers import get_scheduler
@@ -7,10 +7,10 @@ from torchganime.models.video_transformer import (
     VideoTransformer,
     VideoTransformerConfig,
 )
-import deepspeed
 import torchvision
 
 from torch.optim import AdamW
+
 # from colossalai.nn.optimizer import HybridAdam
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from loguru import logger
@@ -45,6 +45,7 @@ class GANime(pl.LightningModule):
         use_token_type_ids: bool = True,
         rec_loss_weight: float = 1.0,
         perceptual_loss_weight: float = 1.0,
+        mode: Literal["image", "video"] = "image",
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -60,7 +61,9 @@ class GANime(pl.LightningModule):
             use_token_type_ids=use_token_type_ids,
             rec_loss_weight=rec_loss_weight,
             perceptual_loss_weight=perceptual_loss_weight,
+            mode=mode,
         )
+        self.mode = mode
         self.video_transformer = VideoTransformer(config)
         self.video_transformer.gradient_checkpointing_enable()
 
@@ -81,7 +84,7 @@ class GANime(pl.LightningModule):
             output = self.video_transformer(
                 generated_video[-1], end_frames, frame_number - i
             )
-            generated_video.append(output["next_frame"])
+            generated_video.append(output["prediction"])
         return torch.stack(generated_video, dim=2)
 
     def training_step(self, batch, batch_idx):
@@ -101,7 +104,11 @@ class GANime(pl.LightningModule):
             f"train/{key}": value for key, value in output.items() if "_loss" in key
         }
         self.log_dict(
-            other_losses, prog_bar=False, logger=True, on_step=True, on_epoch=True,
+            other_losses,
+            prog_bar=False,
+            logger=True,
+            on_step=True,
+            on_epoch=True,
             sync_dist=True,
         )
 
@@ -134,23 +141,29 @@ class GANime(pl.LightningModule):
             f"val/{key}": value for key, value in output.items() if "_loss" in key
         }
         self.log_dict(
-            other_losses, prog_bar=False, logger=True, on_step=True, on_epoch=True,
+            other_losses,
+            prog_bar=False,
+            logger=True,
+            on_step=True,
+            on_epoch=True,
             sync_dist=True,
         )
         if batch_idx < 1:
-            self.sample_videos_gen.append(
-                self.sample(
-                    input["current_frames"], input["end_frames"], frame_number=15
+            if self.mode == "image":
+                self.sample_videos_gen.append(
+                    self.sample(
+                        input["current_frames"], input["end_frames"], frame_number=15
+                    )
                 )
-            )
 
-            self.current_frames.append(input["current_frames"])
-            self.end_frames.append(input["end_frames"])
-            self.predicted_frames.append(output["next_frame"])
-            self.target_frames.append(target)
-        #     # if self.current_epoch == 0:
-        #     self.sample_videos_real.append(target)  # .detach())
-        #     self.sample_videos_gen.append(gen_video)  # .detach())
+                self.current_frames.append(input["current_frames"])
+                self.end_frames.append(input["end_frames"])
+                self.predicted_frames.append(output["prediction"])
+                self.target_frames.append(target)
+        if batch_idx < 4:
+            if self.mode == "video":
+                self.sample_videos_gen.append(output["prediction"])
+                self.sample_videos_real.append(target)
 
         return self.log_dict
 
@@ -215,13 +228,22 @@ class GANime(pl.LightningModule):
             fps=10,
         )
 
-        self.log_images(
-            self.current_frames,
-            self.end_frames,
-            self.predicted_frames,
-            self.target_frames,
-            "val/current_end_predicted_target",
-        )
+        if self.mode == "image":
+            self.log_images(
+                self.current_frames,
+                self.end_frames,
+                self.predicted_frames,
+                self.target_frames,
+                "val/current_end_predicted_target",
+            )
+        elif self.mode == "video":
+            real_videos = self.preprocess_videos_for_logging(self.sample_videos_real)
+            self.logger.experiment.add_video(
+                "videos_real",
+                real_videos,
+                self.current_epoch,
+                fps=10,
+            )
 
     def configure_optimizers(self):
 

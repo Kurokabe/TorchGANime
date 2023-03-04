@@ -1,6 +1,6 @@
 import os
 
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Literal
 from transformers import GPT2Config, PreTrainedModel, PretrainedConfig
 from torchganime.models.vqgan import AutoencoderConfig
 import pytorch_lightning as pl
@@ -67,6 +67,7 @@ class VideoTransformerConfig(PretrainedConfig):
         use_token_type_ids: bool = True,
         rec_loss_weight: float = 1.0,
         perceptual_loss_weight: float = 1.0,
+        mode: Literal["image", "video"] = "image",
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -82,6 +83,7 @@ class VideoTransformerConfig(PretrainedConfig):
         self.use_token_type_ids = use_token_type_ids
         self.rec_loss_weight = rec_loss_weight
         self.perceptual_loss_weight = perceptual_loss_weight
+        self.mode = mode
 
 
 class VideoTransformer(PreTrainedModel):
@@ -121,13 +123,6 @@ class VideoTransformer(PreTrainedModel):
             )
         self.perceptual_loss = LPIPS().eval().requires_grad_(False)
 
-    # def from_pretrained(
-    #     self, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]]
-    # ):
-    #     self.transformer = self.transformer.from_pretrained(
-    #         pretrained_model_name_or_path
-    #     )
-
     def predict_next_indices(
         self,
         current_frames_indices: torch.tensor,
@@ -137,7 +132,7 @@ class VideoTransformer(PreTrainedModel):
         # remaining_frames = remaining_frames.view(1, -1).T.repeat(
         #     1, end_frames_indices.shape[1]
         # )
-        remaining_frames = remaining_frames.view(-1, 1)
+        remaining_frames = torch.clamp(remaining_frames.view(-1, 1), min=0)
 
         input = torch.concat(
             (
@@ -181,13 +176,7 @@ class VideoTransformer(PreTrainedModel):
         nll_loss = rec_loss + p_loss
         return nll_loss, rec_loss, p_loss
 
-    def forward(
-        self,
-        current_frames: torch.tensor,
-        end_frames: torch.tensor,
-        remaining_frames: torch.tensor,
-        target: torch.tensor = None,
-    ):
+    def predict_from_images(self, current_frames, end_frames, remaining_frames, target):
         current_frames_quant, current_frames_indices = self.encode(current_frames)
         _, end_frames_indices = self.encode(end_frames)
 
@@ -206,7 +195,7 @@ class VideoTransformer(PreTrainedModel):
 
             loss = scce_loss + nll_loss
             return {
-                "next_frame": next_frame,
+                "prediction": next_frame,
                 "loss": loss,
                 "scce_loss": scce_loss,
                 "nll_loss": nll_loss,
@@ -214,7 +203,72 @@ class VideoTransformer(PreTrainedModel):
                 "p_loss": p_loss,
             }
 
-        return {"next_frame": next_frame}
+        return {"prediction": next_frame}
+
+    def predict_from_videos(self, first_frames, end_frames, frame_number, target):
+        generated_frames = [first_frames]
+        loss = 0.0
+        scce_loss = 0.0
+        nll_loss = 0.0
+        rec_loss = 0.0
+        p_loss = 0.0
+        for i in range(1, frame_number.max()):
+
+            # TODO change with parameter
+            if False:  # target is not None and self.training:
+                previous_frame = target[:, :, i - 1]
+            else:
+                previous_frame = generated_frames[-1]
+
+            if target is not None:
+                current_target = target[:, :, i]
+            else:
+                current_target = target
+
+            output = self.predict_from_images(
+                current_frames=previous_frame,
+                end_frames=end_frames,
+                remaining_frames=frame_number - i,
+                target=current_target,
+            )
+
+            generated_frames.append(output["prediction"])
+
+            if target is not None:
+                loss += output["loss"] / frame_number.max()
+                scce_loss += output["scce_loss"] / frame_number.max()
+                nll_loss += output["nll_loss"] / frame_number.max()
+                rec_loss += output["rec_loss"] / frame_number.max()
+                p_loss += output["p_loss"] / frame_number.max()
+
+        generated_frames = torch.stack(generated_frames, dim=2)
+
+        if target is not None:
+            return {
+                "prediction": generated_frames,
+                "loss": loss,
+                "scce_loss": scce_loss,
+                "nll_loss": nll_loss,
+                "rec_loss": rec_loss,
+                "p_loss": p_loss,
+            }
+        return {"prediction": generated_frames}
+
+    def forward(
+        self,
+        current_frames: torch.tensor,
+        end_frames: torch.tensor,
+        remaining_frames: torch.tensor,
+        target: torch.tensor = None,
+    ):
+        if self.config.mode == "image":
+            return self.predict_from_images(
+                current_frames, end_frames, remaining_frames, target
+            )
+        elif self.config.mode == "video":
+            return self.predict_from_videos(
+                current_frames, end_frames, remaining_frames, target
+            )
 
     @torch.no_grad()
     def encode(self, frame):
