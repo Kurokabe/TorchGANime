@@ -13,7 +13,7 @@ trainer:
   limit_val_batches: 100
   # strategy: deepspeed_stage_3
   strategy: ddp_sharded
-  max_epochs: 1000
+  max_epochs: 2000
 model:
   learning_rate: 2.5e-4
   vqgan_ckpt_path: "/TorchGANime/checkpoints/vqgan_full_64x128/checkpoints/checkpoint.ckpt"
@@ -29,20 +29,18 @@ model:
   mode: "image" # "video"
 data:
   train_paths: 
-    - "/TorchGANime/data/kny/raw_videos/0*.mkv"
-    - "/TorchGANime/data/kny/raw_videos/1*.mkv"
-    # - "/TorchGANime/data/*/raw_videos/*0.mkv"
-    # - "/TorchGANime/data/*/raw_videos/*1.mkv"
-    # - "/TorchGANime/data/*/raw_videos/*2.mkv"
-    # - "/TorchGANime/data/*/raw_videos/*3.mkv"
-    # - "/TorchGANime/data/*/raw_videos/*4.mkv"
-    # - "/TorchGANime/data/*/raw_videos/*5.mkv"
-    # - "/TorchGANime/data/*/raw_videos/*6.mkv"
-    # - "/TorchGANime/data/*/raw_videos/*7.mkv"
-    # - "/TorchGANime/data/*/raw_videos/*8.mkv"
+    - "/TorchGANime/data/kny/raw_videos/*0.mkv"
+    - "/TorchGANime/data/kny/raw_videos/*1.mkv"
+    - "/TorchGANime/data/kny/raw_videos/*2.mkv"
+    - "/TorchGANime/data/kny/raw_videos/*3.mkv"
+    - "/TorchGANime/data/kny/raw_videos/*4.mkv"
+    - "/TorchGANime/data/kny/raw_videos/*5.mkv"
+    - "/TorchGANime/data/kny/raw_videos/*6.mkv"
+    - "/TorchGANime/data/kny/raw_videos/*7.mkv"
+    - "/TorchGANime/data/kny/raw_videos/*8.mkv"
+    - "/TorchGANime/data/kny/raw_videos/*9.mkv"
   val_paths:
-    - "/TorchGANime/data/kny/raw_videos/1*.mkv"
-    # - "/TorchGANime/data/*/raw_videos/*9.mkv"
+    - "/TorchGANime/data/kny/raw_videos/*9.mkv"
   batch_size: 32
   num_workers: 24
   image_size: 

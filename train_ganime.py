@@ -8,7 +8,9 @@ import torch
 
 
 def cli_main():
-    checkpoint_callback = ModelCheckpoint(save_top_k=1, monitor="val/loss")
+    checkpoint_callback = ModelCheckpoint(
+        save_top_k=1, monitor="val/loss", save_last=True
+    )
     lr_monitor = LearningRateMonitor(logging_interval="step")
 
     torch.set_float32_matmul_precision("medium")
