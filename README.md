@@ -11,7 +11,7 @@
     <img src=./assets/hes-so.jpg height="100" />
 </p>
 
-This original project is a Master thesis realised by Farid Abdalla at HES-SO in partnership with Osaka Prefecture University (now renamed to Osaka Metropolitan University) in Japan  is available on [this repository](https://github.com/Kurokabe/GANime).
+This original project is a Master thesis realised by Farid Abdalla at HES-SO in partnership with Osaka Prefecture University (now renamed to Osaka Metropolitan University) in Japan and is available on [this repository](https://github.com/Kurokabe/GANime).
 
 All implementation details are available in this [pdf](./assets/GANime_paper.pdf).
 
